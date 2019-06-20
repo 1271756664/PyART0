@@ -120,7 +120,8 @@ class C98DRadFile(object):
         elif moment in ['V', 'W']:
             space = self.cut_info['doppler_reso'][cutnum[0]]
         else:
-            print('warning: unknown moment!')
+            print('warning: unknown moment, using default resolution!')
+            space = 75 
             
         return np.arange(0, data.shape[1])*space
     

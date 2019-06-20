@@ -1277,6 +1277,21 @@ write_uf_mapping = {
     radar_echo_classification: 'HC',
 }
 
+c98d_archive_field_mapping = {
+    # C98D field: radar field name
+    'dBT': reflectivity,
+    'dBZ': corrected_reflectivity,
+    'V': velocity,
+    'W': spectrum_width,
+    'SQI': signal_to_noise_ratio, 
+    'KDP': specific_differential_phase, 
+    'ZDR': differential_reflectivity,
+    'QDP': differential_phase,
+    'CC': cross_correlation_ratio,
+    'Zc' : corrected_reflectivity, 
+}
+
+
 FIELD_MAPPINGS = {                  # Required variable
     'sigmet': sigmet_field_mapping,
     'nexrad_archive': nexrad_archive_field_mapping,
@@ -1289,6 +1304,7 @@ FIELD_MAPPINGS = {                  # Required variable
     'gamic': gamic_field_mapping,
     'uf': uf_field_mapping,
     'write_uf': write_uf_mapping,
+    'c98d_archive': c98d_archive_field_mapping,
 }
 
 
