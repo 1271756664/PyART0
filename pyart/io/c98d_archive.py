@@ -9,7 +9,7 @@ import warnings
 
 import numpy as np
 
-from .C98DRadFile import C98DRadFile
+#from .C98DRadFile import C98DRadFile
 from pyart.config import FileMetadata, get_fillvalue
 from pyart.core.radar import Radar
 from pyart.io.common import make_time_unit_str, _test_arguments, prepare_for_read
@@ -43,7 +43,7 @@ def c98dfile_archive(filename, field_names=None, additional_metadata=None,
 
     # range
     _range = filemetadata('range')
-    _range['data'] = nfile.get_range
+    _range['data'] = nfile.get_range('dBZ', cutnum)
 #    _range['meters_to_center_of_first_gate'] = float(first_gate)
 #    _range['meters_between_gates'] = float(gate_spacing)
     

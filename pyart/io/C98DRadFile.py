@@ -109,10 +109,20 @@ class C98DRadFile(object):
         '''get assign radial time'''
         return datetime(1970, 1, 1) + timedelta(seconds=self.radial_info['seconds'][radial+1])
     
-    @property
-    def get_range(self):
-        ''' '''
-        return np.arange(0, 1933)*1000 # arguly line
+    def get_range(self, moment, cutnum):
+        """ """
+        if moment is None:
+            moment = 'dBZ'
+            
+        data = self.get_data(moment, cutnum[0])
+        if moment in ['dBT', 'dBZ', 'ZDR', 'Zc']:
+            space = self.cut_info['log_reso'][cutnum[0]]
+        elif moment in ['V', 'W']:
+            space = self.cut_info['doppler_reso'][cutnum[0]]
+        else:
+            print('warning: unknown moment!')
+            
+        return np.arange(0, data.shape[1])*space
     
     @property
     def scans(self):
