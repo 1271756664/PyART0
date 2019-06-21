@@ -5,7 +5,7 @@ Read Chinese S-band and C-band dualpol radar
 
 The library with new API can read Chinese S-band doppler and NUIST C-band dualpol radar based ARM-DOE PyART.
 
-You can install this library from source using command as follow.
+You can install this library from source using command as follow::
   git clone  https://github.com/bugsuse/pyart.git
   cd pyart
   python setup.py install or python setup.py install  --user 
