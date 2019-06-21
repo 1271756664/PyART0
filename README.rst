@@ -1,10 +1,18 @@
 .. -*- mode: rst -*-
 
-这个雷达数据处理库Fork自ARM-DOE，在原来库的基础上加入了S波段雷达数据的读取，并且与PyART库的其他函数相兼容。直接将此库clone到本地然后执行 
+Read Chinese S-band and C-band dualpol radar  
+=============================================
 
-python setup.py install
+The library with new API can read Chinese S-band doppler and NUIST C-band dualpol radar based ARM-DOE PyART.
 
------------------------以下为原库的README内容-------------------------------------------
+You can install this library from source using command as follow.
+```
+git clone  https://github.com/bugsuse/pyart.git
+cd pyart
+python setup.py install or python setup.py install  --user 
+```
+
+
 
 |Travis|_ |AppVeyor|_
 
