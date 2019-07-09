@@ -1,29 +1,40 @@
 .. -*- mode: rst -*-
-
-Read Chinese S-band and C-band dualpol radar  
-=============================================
-
-The library with new API can read Chinese S-band doppler and NUIST C-band dualpol radar based ARM-DOE PyART.
-
-You can install this library from source using command as follow::
-
-    git clone  https://github.com/bugsuse/pyart.git
-    cd pyart
-    python setup.py install or python setup.py install  --user 
-
-
-
-|Travis|_ |AppVeyor|_
-
-.. |Travis| image:: https://api.travis-ci.org/ARM-DOE/pyart.png?branch=master
-.. _Travis: https://travis-ci.org/ARM-DOE/pyart
-
-.. |AppVeyor| image:: https://ci.appveyor.com/api/projects/status/9do57qycha65j4v9/branch/master?svg=true
-.. _AppVeyor: https://ci.appveyor.com/project/JonathanHelmus/pyart-l711v/branch/master
-
-
 The Python ARM Radar Toolkit (Py-ART)
 =====================================
+
+|Travis| |AppVeyor|
+
+|AnacondaCloud| |CondaDownloads|
+
+|DocsDev| |DocsUsers| |DocsGuides|
+
+
+.. |Travis| image:: https://api.travis-ci.org/ARM-DOE/pyart.png?branch=master
+    :target: https://travis-ci.org/ARM-DOE/pyart
+
+.. |AppVeyor| image:: https://ci.appveyor.com/api/projects/status/9do57qycha65j4v9/branch/master?svg=true
+    :target: https://ci.appveyor.com/project/JonathanHelmus/pyart-l711v/branch/master
+
+.. |AnacondaCloud| image:: https://anaconda.org/conda-forge/arm_pyart/badges/version.svg
+    :target: https://anaconda.org/conda-forge/arm_pyart
+
+.. |CondaDownloads| image:: https://anaconda.org/conda-forge/arm_pyart/badges/downloads.svg
+    :target: https://anaconda.org/conda-forge/arm_pyart/files
+
+.. |DocsDev| image:: https://img.shields.io/badge/docs-developers-4088b8.svg
+    :target: http://arm-doe.github.io/pyart-docs-travis/dev_reference/index.html
+
+.. |DocsUsers| image:: https://img.shields.io/badge/docs-users-4088b8.svg
+    :target: http://arm-doe.github.io/pyart-docs-travis/user_reference/index.html
+
+.. |DocsGuides| image:: https://img.shields.io/badge/docs-guides-4088b8.svg
+    :target: https://github.com/ARM-DOE/pyart/tree/master/guides/
+
+.. |ARM| image:: https://img.shields.io/badge/Sponsor-ARM-blue.svg?colorA=00c1de&colorB=00539c
+    :target: https://www.arm.gov/
+
+.. |Tweet| image:: https://img.shields.io/twitter/url/http/shields.io.svg?style=social
+    :target: https://twitter.com/Py_ART
 
 The Python ARM Radar Toolkit, Py-ART, is an open source Python module 
 containing a growing collection of weather radar algorithms and utilities
@@ -58,7 +69,7 @@ please cite:
     DOI: http://doi.org/10.5334/jors.119
 
 Py-ART implements many published scientific methods which should *also* be
-cited if you make use of them.  Refer to the **References** section in the
+cited if you make use of them. Refer to the **References** section in the
 documentation of the functions used for information on these citations.
 
 
@@ -66,11 +77,21 @@ Install
 =======
 
 The easiest method for installing Py-ART is to use the conda packages from
-the latest release.  To do this you must download and install 
-`Anaconda <http://continuum.io/downloads>`_ or 
-`Miniconda <http://continuum.io/downloads>`_.  
-Then use the following command in a terminal or command prompt to install
-the latest version of Py-ART::
+the latest release. To do this you must download and install 
+`Anaconda <https://www.anaconda.com/download/#>`_ or 
+`Miniconda <https://conda.io/miniconda.html>`_.
+With Anaconda or Miniconda install, it is recommended to create a new conda
+environment when using Py-ART or even other packages. To create a new
+environment based on the `environment.yml <https://github.com/ARM-DOE/pyart/blob/master/environment.yml>`_::
+
+    conda env create -f environment.yml
+
+Or for a basic environment and downloading optional dependencies as needed::
+
+    conda create -n pyart_env -c conda-forge python=3.7 arm_pyart
+
+Basic command in a terminal or command prompt to install the latest version of
+Py-ART::
 
     conda install -c conda-forge arm_pyart
 
@@ -87,9 +108,9 @@ Configuration
 =============
 
 The configuration file in Py-ART specifies the default metadata, field names,
-colormaps and plot limits.  A custom configuration can be loaded
+colormaps and plot limits. A custom configuration can be loaded
 automatically be setting the environmental variable **PYART_CONFIG** to point
-to a custom configuration file.  For additional details on this process see the
+to a custom configuration file. For additional details on this process see the
 documentation on the `pyart.load_config` function.
 
 
@@ -117,10 +138,10 @@ These include:
 
 Other related open source software for working with weather radar data:
 
-* `wradlib <http://wradlib.bitbucket.org/>`_ : 
+* `wradlib <https://wradlib.org>`_ :
   An open source library for weather radar data processing.
   
-* `BALTRAD <http://baltrad.eu/>`_ : Community-based weather radar networking.
+* `BALTRAD <https://baltrad.eu/>`_ : Community-based weather radar networking.
 
 * `MMM-Py <https://github.com/nasa/MMM-Py>`_ : 
   Marshall MRMS Mosaic Python Toolkit.
@@ -128,10 +149,10 @@ Other related open source software for working with weather radar data:
 * `CSU_RadarTools <https://github.com/CSU-Radarmet/CSU_RadarTools>`_ : 
   Colorado State University Radar Tools.
 
-* `TRMM RSL <http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/rsl/>`_ :
+* `TRMM RSL <https://trmm-fc.gsfc.nasa.gov/trmm_gv/software/rsl/>`_ :
   TRMM Radar Software Library.
 
-* `RadX <http://www.ral.ucar.edu/projects/titan/docs/radial_formats/radx.html>`_: 
+* `RadX <https://www.ral.ucar.edu/projects/titan/docs/radial_formats/radx.html>`_: 
   Radx C++ Software Package for Radial Radar Data.
 
 
@@ -142,17 +163,17 @@ Py-ART is tested to work under Python 2.7, 3.4, 3.5, and 3.6.
 
 The required dependencies to install Py-ART in addition to Python are:
 
-* `NumPy <http://www.scipy.org>`_
-* `SciPy <http://www.scipy.org>`_
-* `matplotlib <http://matplotlib.org/>`_
+* `NumPy <https://www.numpy.org/>`_
+* `SciPy <https://www.scipy.org>`_
+* `matplotlib <https://matplotlib.org/>`_
 * `netCDF4 <https://github.com/Unidata/netcdf4-python>`_
 
-As well as a working C/C++ compiler.  A Fortran compiler is required for some
-optional modules. An easy method to install these dependencies is by using a 
+A working C/C++ compiler is required for some optional modules. An easy method
+to install these dependencies is by using a 
 `Scientific Python distributions <http://scipy.org/install.html>`_.
-`Anaconda <https://store.continuum.io/cshop/anaconda/>`_ will install all of
+`Anaconda <https://www.anaconda.com/distribution/>`_ will install all of
 the above packages by default on Windows, Linux and Mac computers and is
-provided free of charge by Continuum Analytics.
+provided free of charge by Anaconda.
 
 
 Optional Dependences
@@ -162,34 +183,44 @@ The above Python modules are require before installing Py-ART, additional
 functionality is available of the following modules are installed.
 
 * `TRMM Radar Software Library (RSL) 
-  <http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/rsl/>`_.  
+  <https://trmm-fc.gsfc.nasa.gov/trmm_gv/software/rsl/>`_.  
   If installed Py-ART will be able to read in radar data in a number of 
   additional formats (Lassen, McGill, Universal Format, and RADTEC) and 
   perform automatic dealiasing of Doppler velocities.  RSL should be
   install prior to installing Py-ART. The environmental variable `RSL_PATH`
   should point to the location where RSL was installed if RSL was not
-  installed in the default location (/usr/local/trmm).
+  installed in the default location (/usr/local/trmm), such as a anaconda path
+  (/usr/anaconda3/envs/pyart_env/.
 
 * In order to read files which are stored in HDF5 files the
-  `h5py <http://www.h5py.org/>`_ package and related libraries must be
+  `h5py <https://www.h5py.org/>`_ package and related libraries must be
   installed.
 
 * A linear programming solver and Python wrapper to use the LP phase
   processing method. `CyLP <https://github.com/mpy/CyLP>`_ is recommended as
   it gives the fastest results, but 
-  `PyGLPK <http://tfinley.net/software/pyglpk/>`_ and 
-  `CVXOPT <http://cvxopt.org/>`_ are also supported. The underlying LP 
+  `PyGLPK <https://tfinley.net/software/pyglpk/>`_ and 
+  `CVXOPT <https://cvxopt.org/>`_ are also supported. The underlying LP 
   solvers `CBC <https://projects.coin-or.org/Cbc>`_ or 
-  `GLPK <http://www.gnu.org/software/glpk/>`_ will also be required depending
-  on which wrapper is used.
+  `GLPK <https://www.gnu.org/software/glpk/>`_ will also be required depending
+  on which wrapper is used. When using `CyLP <https://github.com/mpy/CyLP>`_
+  a path to coincbc is needed by setting the `COIN_INSTALL_DIR` path, such as
+  (/usr/anaconda3/envs/pyart_env/).
 
-* `Basemap <http://matplotlib.org/basemap/>`_. If installed the ability to 
-  plot grids on geographic maps is available.
+* `Cartopy <https://scitools.org.uk/cartopy/docs/latest/>`_. If installed,
+  the ability to plot grids on geographic maps is available.
 
-* `wradlib <http://wradlib.bitbucket.org/>`_.  Needed to calculate the texture
+* `xarray <https://xarray.pydata.org/en/stable/>`_. If installed, gives the
+  ability to work with the grid dataset used in grid plotting.
+
+* `Basemap <https://matplotlib.org/basemap/>`_. If installed, also gives the
+  ability to plot grids on geographic maps, but Cartopy is recommended over
+  Basemap.
+
+* `wradlib <https://docs.wradlib.org/en/latest/>`_.  Needed to calculate the texture
   of a differential phase field.
 
-* `nose <http://nose.readthedocs.org/en/latest/>`_.  
+* `pytest <https://docs.pytest.org/en/latest/>`_.
   Required to run the Py-ART unit tests.
 
 * `gdal <https://pypi.python.org/pypi/GDAL/>`_.
@@ -201,7 +232,7 @@ Installing from source
 Installing Py-ART from source is the only way to get the latest updates and
 enhancement to the software that have not yet made it into a release.
 The latest source code for Py-ART can be obtained from the GitHub repository,
-https://github.com/ARM-DOE/pyart.  Either download and unpack the 
+https://github.com/ARM-DOE/pyart. Either download and unpack the 
 `zip file <https://github.com/ARM-DOE/pyart/archive/master.zip>`_ of 
 the source code or use git to checkout the repository::
 
@@ -220,8 +251,8 @@ To install for all users on Unix/Linux::
 Development
 ===========
 
-Py-ART is an open source, community software project.  Contributions to
-the package are welcomed from all users.  
+Py-ART is an open source, community software project. Contributions to
+the package are welcomed from all users.
 
 Code
 ----
@@ -235,17 +266,18 @@ forking the repository is highly recommended.
 Contributing
 -------------
 
-We welcome contributions for all used of Py-ART provided the code can be
-distributed under the BSD 3-clause license.  A copy of this license is
-available in the **LICENSE.txt** file in this directory.  
+We welcome contributions for all uses of Py-ART, provided the code can be
+distributed under the BSD 3-clause license. A copy of this license is
+available in the **LICENSE.txt** file in this directory. For more on
+contributing, see the `contributor's guide. <https://github.com/ARM-DOE/pyart/blob/master/guides/contributors_guide.rst>`_
 
 Testing
 -------
 
 After installation, you can launch the test suite from outside the
-source directory (you will need to have nosetests installed)::
+source directory (you will need to have pytest installed)::
 
-   $ nosetests --exe pyart
+   $ pytest --pyargs pyart
 
-In-place installs can be tested using the `nosetest` command from within
+In-place installs can be tested using the `pytest` command from within
 the source directory.

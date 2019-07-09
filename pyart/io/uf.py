@@ -2,7 +2,7 @@
 pyart.io.uf
 ===========
 
-Reading of Universal format (UF) files
+Reading of Universal format (UF) files.
 
 .. autosummary::
     :toctree: generated/
@@ -50,7 +50,7 @@ _SWEEP_MODE_STR = {
 
 def read_uf(filename, field_names=None, additional_metadata=None,
             file_field_names=False, exclude_fields=None,
-            delay_field_loading=False, **kwargs):
+            include_fields=None, delay_field_loading=False, **kwargs):
     """
     Read a UF File.
 
@@ -67,7 +67,7 @@ def read_uf(filename, field_names=None, additional_metadata=None,
     additional_metadata : dict of dicts, optional
         Dictionary of dictionaries to retrieve metadata from during this read.
         This metadata is not used during any successive file reads unless
-        explicitly included.  A value of None, the default, will not
+        explicitly included. A value of None, the default, will not
         introduce any addition metadata and the file specific or default
         metadata as specified by the Py-ART configuration file will be used.
     file_field_names : bool, optional
@@ -76,7 +76,12 @@ def read_uf(filename, field_names=None, additional_metadata=None,
         `field_names` parameter to rename fields.
     exclude_fields : list or None, optional
         List of fields to exclude from the radar object. This is applied
-        after the `file_field_names` and `field_names` parameters.
+        after the `file_field_names` and `field_names` parameters. Set
+        to None to include all fields specified by include_fields.
+    include_fields : list or None, optional
+        List of fields to include from the radar object. This is applied
+        after the `file_field_names` and `field_names` parameters. Set
+        to None to include all fields not specified by exclude_fields.
     delay_field_loading : bool
         This option is not implemented in the function but included for
         compatibility.
@@ -92,7 +97,8 @@ def read_uf(filename, field_names=None, additional_metadata=None,
 
     # create metadata retrieval object
     filemetadata = FileMetadata('uf', field_names, additional_metadata,
-                                file_field_names, exclude_fields)
+                                file_field_names, exclude_fields,
+                                include_fields)
 
     # Open UF file and get handle
     ufile = UFFile(prepare_for_read(filename))
@@ -230,7 +236,7 @@ def _get_instrument_parameters(ufile, filemetadata):
     radar_beam_width_h['data'] = np.array([beam_width_h], dtype='float32')
 
     # radar_beam_width_v
-    radar_beam_width_v = filemetadata('radar_beam_width_w')
+    radar_beam_width_v = filemetadata('radar_beam_width_v')
     radar_beam_width_v['data'] = np.array([beam_width_v], dtype='float32')
 
     # radar_receiver_bandwidth

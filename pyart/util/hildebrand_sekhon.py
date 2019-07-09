@@ -36,10 +36,10 @@ def estimate_noise_hs74(spectrum, navg=1):
     mean : float-like
         Mean of points in the spectrum identified as noise.
     threshold : float-like
-        Threshold separating noise from signal.  The point in the spectrum with
+        Threshold separating noise from signal. The point in the spectrum with
         this value or below should be considered as noise, above this value
         signal. It is possible that all points in the spectrum are identified
-        as noise.  If a peak is required for moment calculation then the point
+        as noise. If a peak is required for moment calculation then the point
         with this value should be considered as signal.
     var : float-like
         Variance of the points in the spectrum identified as noise.
@@ -57,8 +57,8 @@ def estimate_noise_hs74(spectrum, navg=1):
     nnoise = len(spectrum)  # default to all points in the spectrum as noise
     for npts in range(1, len(sorted_spectrum)+1):
         partial = sorted_spectrum[:npts]
-        mean = partial.mean()
-        var = partial.var()
+        mean = np.mean(partial)
+        var = np.var(partial)
         if var * navg < mean**2.:
             nnoise = npts
         else:
@@ -66,7 +66,7 @@ def estimate_noise_hs74(spectrum, navg=1):
             break
 
     noise_spectrum = sorted_spectrum[:nnoise]
-    mean = noise_spectrum.mean()
+    mean = np.mean(noise_spectrum)
     threshold = sorted_spectrum[nnoise-1]
-    var = noise_spectrum.var()
+    var = np.var(noise_spectrum)
     return mean, threshold, var, nnoise

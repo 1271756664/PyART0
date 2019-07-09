@@ -13,30 +13,37 @@ Reading and writing Grid objects.
 
 """
 
-import warnings
-import numpy as np
-import netCDF4
 import datetime
+import warnings
+
+import netCDF4
+import numpy as np
 
 from ..core.grid import Grid
 from .cfradial import _ncvar_to_dict, _create_ncvar
 from .common import _test_arguments
 
 
-def read_grid(filename, exclude_fields=None, **kwargs):
+def read_grid(filename, exclude_fields=None, include_fields=None, **kwargs):
     """
     Read a netCDF grid file produced by Py-ART.
 
     Parameters
     ----------
     filename : str
-        Filename of netCDF grid file to read.  This file must have been
+        Filename of netCDF grid file to read. This file must have been
         produced by :py:func:`write_grid` or have identical layout.
 
     Other Parameters
     ----------------
-    exclude_fields : list
-        A list of fields to exclude from the grid object.
+    exclude_fields : list or None, optional
+        List of fields to exclude from the radar object. This is applied
+        after the `file_field_names` and `field_names` parameters. Set
+        to None to include all fields specified by include_fields.
+    include_fields : list or None, optional
+        List of fields to include from the radar object. This is applied
+        after the `file_field_names` and `field_names` parameters. Set
+        to None to include all fields not specified by exclude_fields.
 
     Returns
     -------
@@ -96,13 +103,18 @@ def read_grid(filename, exclude_fields=None, **kwargs):
     for field in field_keys:
         if field in exclude_fields:
             continue
+        if include_fields is not None:
+            if field not in include_fields:
+                continue
         field_dic = _ncvar_to_dict(dset.variables[field])
         if field_dic['data'].shape == field_shape_with_time:
             field_dic['data'].shape = field_shape
             fields[field] = field_dic
         else:
             bad_shape = field_dic['data'].shape
-            warnings.warn('Field %s skipped due to incorrect shape' % (field))
+            warnings.warn(
+                'Field %s skipped due to incorrect shape %s'
+                % (field, bad_shape))
 
     # radar_ variables
     if 'radar_latitude' in dset.variables:
@@ -143,10 +155,10 @@ def read_grid(filename, exclude_fields=None, **kwargs):
 
 def write_grid(filename, grid, format='NETCDF4',
                write_proj_coord_sys=True, proj_coord_sys=None,
-               arm_time_variables=False,
+               arm_time_variables=False, arm_alt_lat_lon_variables=False,
                write_point_x_y_z=False, write_point_lon_lat_alt=False):
     """
-    Write a Grid object to a CF-1.5 and ARM standard netCDF file
+    Write a Grid object to a CF-1.5 and ARM standard netCDF file.
 
     To control how the netCDF variables are created, set any of the following
     keys in the grid attribute dictionaries.
@@ -176,7 +188,7 @@ def write_grid(filename, grid, format='NETCDF4',
     write_proj_coord_sys bool, optional
         True to write information on the coordinate transform used in the map
         projection to the ProjectionCoordinateSystem variable following the CDM
-        Object Model.  The resulting file should be interpreted as containing
+        Object Model. The resulting file should be interpreted as containing
         geographic grids by tools which use the Java NetCDF library
         (THREDDS, toolsUI, etc).
     proj_coord_sys : dict or None, optional
@@ -188,6 +200,9 @@ def write_grid(filename, grid, format='NETCDF4',
     arm_time_variables : bool, optional
         True to write the ARM standard time variables base_time and
         time_offset. False will not write these variables.
+    arm_alt_lat_lon_variables : bool, optional
+        True to write the ARM standard alt, lat, lon variables.
+        False will not write these variables.
     write_point_x_y_z : bool, optional
         True to include the point_x, point_y and point_z variables in the
         written file, False will not write these variables.
@@ -207,7 +222,12 @@ def write_grid(filename, grid, format='NETCDF4',
         dset.createDimension('nradar', grid.nradar)
         if grid.radar_name is not None:
             # a length of at least 1 is required for the dimension
-            nradar_str_length = max(len(grid.radar_name['data'][0]), 1)
+            lenlist = []
+            for rname in grid.radar_name['data']:
+                lenlist.append(len(rname))
+            lenlist.append(1)
+            nradar_str_length = np.max(lenlist)
+            # nradar_str_length = max(len(grid.radar_name['data'][0]), 1)
             dset.createDimension('nradar_str_length', nradar_str_length)
 
     # required variables
@@ -238,7 +258,7 @@ def write_grid(filename, grid, format='NETCDF4',
             warnings.warn(
                 'Cannot determine ProjectionCoordinateSystem parameter for ' +
                 'the given projection, the file will not be written ' +
-                'without this information')
+                'without this information.')
 
         else:
             proj_coord_sys['data'] = np.array(1, dtype='int32')
@@ -282,11 +302,41 @@ def write_grid(filename, grid, format='NETCDF4',
         }
         _create_ncvar(time_offset, dset, 'time_offset', ('time', ))
 
+    # create ARM alt, lat, lon variables, if requested
+    if arm_alt_lat_lon_variables:
+        alt = {
+            'data': np.array([grid.origin_altitude['data']], dtype=np.float64),
+            'standard_name': 'Altitude',
+            'units': 'm',
+            'long_name': 'Altitude above mean sea level',
+        }
+        _create_ncvar(alt, dset, 'alt', ())
+
+        lat = {
+            'data': np.array([grid.origin_latitude['data']], dtype=np.float64),
+            'standard_name': 'Latitude',
+            'units': 'degree_N',
+            'long_name': 'North Latitude',
+            'valid_min': -90.,
+            'valid_max': 90.,
+        }
+        _create_ncvar(lat, dset, 'lat', ())
+
+        lon = {
+            'data': np.array([grid.origin_longitude['data']], dtype=np.float64),
+            'standard_name': 'Longitude',
+            'units': 'degree_E',
+            'long_name': 'East Longitude',
+            'valid_min': -180.,
+            'valid_max': 180.,
+        }
+        _create_ncvar(lon, dset, 'lon', ())
+
     # optionally write point_ variables
     if write_point_x_y_z:
-        _create_ncvar(grid.point_x, dset, 'point_x', ('z', 'x', 'y'))
-        _create_ncvar(grid.point_y, dset, 'point_y', ('z', 'x', 'y'))
-        _create_ncvar(grid.point_z, dset, 'point_z', ('z', 'x', 'y'))
+        _create_ncvar(grid.point_x, dset, 'point_x', ('z', 'y', 'x'))
+        _create_ncvar(grid.point_y, dset, 'point_y', ('z', 'y', 'x'))
+        _create_ncvar(grid.point_z, dset, 'point_z', ('z', 'y', 'x'))
     if write_point_lon_lat_alt:
         dims = ('z', 'y', 'x')
         _create_ncvar(grid.point_latitude, dset, 'point_latitude', dims)

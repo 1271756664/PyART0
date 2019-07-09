@@ -35,7 +35,8 @@ from .nexrad_interpolate import _fast_interpolate_scan
 
 def read_nexrad_archive(filename, field_names=None, additional_metadata=None,
                         file_field_names=False, exclude_fields=None,
-                        delay_field_loading=False, station=None, scans=None,
+                        include_fields=None, delay_field_loading=False,
+                        station=None, scans=None,
                         linear_interp=True, **kwargs):
     """
     Read a NEXRAD Level 2 Archive file.
@@ -43,10 +44,10 @@ def read_nexrad_archive(filename, field_names=None, additional_metadata=None,
     Parameters
     ----------
     filename : str
-        Filename of NEXRAD Level 2 Archive file.  The files hosted by
+        Filename of NEXRAD Level 2 Archive file. The files hosted by
         at the NOAA National Climate Data Center [1]_ as well as on the
-        UCAR THREDDS Data Server [2]_ have been tested.  Other NEXRAD
-        Level 2 Archive files may or may not work.  Message type 1 file
+        UCAR THREDDS Data Server [2]_ have been tested. Other NEXRAD
+        Level 2 Archive files may or may not work. Message type 1 file
         and message type 31 files are supported.
     field_names : dict, optional
         Dictionary mapping NEXRAD moments to radar field names. If a
@@ -57,7 +58,7 @@ def read_nexrad_archive(filename, field_names=None, additional_metadata=None,
     additional_metadata : dict of dicts, optional
         Dictionary of dictionaries to retrieve metadata from during this read.
         This metadata is not used during any successive file reads unless
-        explicitly included.  A value of None, the default, will not
+        explicitly included. A value of None, the default, will not
         introduct any addition metadata and the file specific or default
         metadata as specified by the metadata configuration file will be used.
     file_field_names : bool, optional
@@ -67,24 +68,29 @@ def read_nexrad_archive(filename, field_names=None, additional_metadata=None,
         `additional_metadata`.
     exclude_fields : list or None, optional
         List of fields to exclude from the radar object. This is applied
-        after the `file_field_names` and `field_names` parameters.
+        after the `file_field_names` and `field_names` parameters. Set
+        to None to include all fields specified by include_fields.
+    include_fields : list or None, optional
+        List of fields to include from the radar object. This is applied
+        after the `file_field_names` and `field_names` parameters. Set
+        to None to include all fields not specified by exclude_fields.
     delay_field_loading : bool, optional
         True to delay loading of field data from the file until the 'data'
-        key in a particular field dictionary is accessed.  In this case
+        key in a particular field dictionary is accessed. In this case
         the field attribute of the returned Radar object will contain
         LazyLoadDict objects not dict objects.
     station : str or None, optional
         Four letter ICAO name of the NEXRAD station used to determine the
-        location in the returned radar object.  This parameter is only
+        location in the returned radar object. This parameter is only
         used when the location is not contained in the file, which occur
         in older NEXRAD message 1 files.
     scans : list or None, optional
-        Read only specified scans from the file.  None (the default) will read
+        Read only specified scans from the file. None (the default) will read
         all scans.
     linear_interp : bool, optional
         True (the default) to perform linear interpolation between valid pairs
         of gates in low resolution rays in files mixed resolution rays.
-        False will perform a nearest neighbor interpolation.  This parameter is
+        False will perform a nearest neighbor interpolation. This parameter is
         not used if the resolution of all rays in the file or requested sweeps
         is constant.
 
@@ -106,7 +112,7 @@ def read_nexrad_archive(filename, field_names=None, additional_metadata=None,
     # create metadata retrieval object
     filemetadata = FileMetadata('nexrad_archive', field_names,
                                 additional_metadata, file_field_names,
-                                exclude_fields)
+                                exclude_fields, include_fields)
 
     # open the file and retrieve scan information
     nfile = NEXRADLevel2File(prepare_for_read(filename))
@@ -132,6 +138,8 @@ def read_nexrad_archive(filename, field_names=None, additional_metadata=None,
     vcp_pattern = nfile.get_vcp_pattern()
     if vcp_pattern is not None:
         metadata['vcp_pattern'] = vcp_pattern
+    if 'icao' in nfile.volume_header.keys():
+        metadata['instrument_name'] = nfile.volume_header['icao'].decode()
 
     # scan_type
     scan_type = 'ppi'
@@ -177,7 +185,18 @@ def read_nexrad_archive(filename, field_names=None, additional_metadata=None,
     fixed_angle = filemetadata('fixed_angle')
     azimuth['data'] = nfile.get_azimuth_angles(scans)
     elevation['data'] = nfile.get_elevation_angles(scans).astype('float32')
-    fixed_angle['data'] = nfile.get_target_angles(scans)
+    fixed_agl = []
+    for i in nfile.get_target_angles(scans):
+        if i > 180:
+            i = i - 360.
+            warnings.warn("Fixed_angle(s) greater than 180 degrees present."
+                          + " Assuming angle to be negative so subtrating 360",
+                          UserWarning)
+        else:
+            i = i
+        fixed_agl.append(i)
+    fixed_angles = np.array(fixed_agl, dtype='float32')
+    fixed_angle['data'] = fixed_angles
 
     # fields
     max_ngates = len(_range['data'])

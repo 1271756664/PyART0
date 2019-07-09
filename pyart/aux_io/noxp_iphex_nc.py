@@ -64,7 +64,12 @@ def read_noxp_iphex_nc(filename, field_names=None, additional_metadata=None,
         `additional_metadata`.
     exclude_fields : list or None, optional
         List of fields to exclude from the radar object. This is applied
-        after the `file_field_names` and `field_names` parameters.
+        after the `file_field_names` and `field_names` parameters. Set
+        to None to include all fields specified by include_fields.
+    include_fields : list or None, optional
+        List of fields to include from the radar object. This is applied
+        after the `file_field_names` and `field_names` parameters. Set
+        to None to include all fields not specified by exclude_fields.
 
     Returns
     -------
@@ -89,7 +94,8 @@ def read_noxp_iphex_nc(filename, field_names=None, additional_metadata=None,
     if field_names is None:
         field_names = NOXP_FIELD_NAMES
     filemetadata = FileMetadata('cfradial', field_names, additional_metadata,
-                                file_field_names, exclude_fields)
+                                file_field_names, exclude_fields,
+                                include_fields)
 
     # read the data
     ncobj = netCDF4.Dataset(filename)
@@ -152,7 +158,7 @@ def read_noxp_iphex_nc(filename, field_names=None, additional_metadata=None,
     _range['meters_to_center_of_first_gate'] = np.mean(rng[0][0:2])
     # Gate spacing mostly but not completely constant
     _range['meters_between_gates'] = np.median(np.diff(_range['data']))
-    _range['spacing_is_constant'] = False
+    _range['spacing_is_constant'] = 0
 
     # azimuth
     azimuth = filemetadata('azimuth')
@@ -179,6 +185,8 @@ def read_noxp_iphex_nc(filename, field_names=None, additional_metadata=None,
         field_name = filemetadata.get_field_name(key)
         if field_name is None:
             if exclude_fields is not None and key in exclude_fields:
+                continue
+            if include_fields is not None and not key in include_fields:
                 continue
             field_name = key
         fields[field_name] = _ncvar_to_dict(ncvars[key])

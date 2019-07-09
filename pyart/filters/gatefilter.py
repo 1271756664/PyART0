@@ -10,7 +10,8 @@ corrections routines in Py-ART.
 
     moment_based_gate_filter
     moment_and_texture_based_gate_filter
-    calculate_velocity_texture
+    temp_based_gate_filter
+    iso0_based_gate_filter
 
 .. autosummary::
     :toctree: generated/
@@ -39,7 +40,7 @@ def moment_based_gate_filter(
     * Gates where the instrument is transitioning between sweeps.
     * Gates where the reflectivity is outside the interval min_refl, max_refl.
     * Gates where the normalized coherent power is below min_ncp.
-    * Gates where the cross correlation ratio is below min_rhi.  Using the
+    * Gates where the cross correlation ratio is below min_rhi. Using the
       default parameter this filtering is disabled.
     * Gates where any of the above three fields are masked or contain
       invalid values (NaNs or infs).
@@ -54,23 +55,23 @@ def moment_based_gate_filter(
         Names of the radar fields which contain the reflectivity, normalized
         coherent power (signal quality index) and cross correlation ratio
         (RhoHV) from which the gate filter will be created using the above
-        criteria.  A value of None for any of these parameters will use the
+        criteria. A value of None for any of these parameters will use the
         default field name as defined in the Py-ART configuration file.
     min_ncp, min_rhv : float
         Minimum values for the normalized coherence power and cross
-        correlation ratio.  Gates in these fields below these limits as well as
+        correlation ratio. Gates in these fields below these limits as well as
         gates which are masked or contain invalid values will be excluded and
-        not used in calculation which use the filter.  A value of None will
+        not used in calculation which use the filter. A value of None will
         disable filtering based upon the given field including removing
-        masked or gates with an invalid value.  To disable the thresholding
+        masked or gates with an invalid value. To disable the thresholding
         but retain the masked and invalid filter set the parameter to a value
         below the lowest value in the field.
     min_refl, max_refl : float
-        Minimum and maximum values for the reflectivity.  Gates outside
+        Minimum and maximum values for the reflectivity. Gates outside
         of this interval as well as gates which are masked or contain invalid
         values will be excluded and not used in calculation which use this
         filter. A value or None for one of these parameters will disable the
-        minimum or maximum filtering but retain the other.  A value of None
+        minimum or maximum filtering but retain the other. A value of None
         for both of these values will disable all filtering based upon the
         reflectivity including removing masked or gates with an invalid value.
         To disable the interval filtering but retain the masked and invalid
@@ -80,7 +81,7 @@ def moment_based_gate_filter(
     Returns
     -------
     gatefilter : :py:class:`GateFilter`
-        A gate filter based upon the described criteria.  This can be
+        A gate filter based upon the described criteria. This can be
         used as a gatefilter parameter to various functions in pyart.correct.
 
     """
@@ -149,7 +150,7 @@ def moment_and_texture_based_gate_filter(
         differential reflectivity, texture of the cross correlation ratio,
         texture of differential phase and texture of reflectivity. A value
         of None for any of these parameters will use the default field name
-        as defined in the Py-ART configuration file
+        as defined in the Py-ART configuration file.
     wind_size : int
         Size of the moving window used to compute the ray texture.
     max_textphi, max_textrhv, max_textzdr, max_textrefl : float
@@ -157,7 +158,7 @@ def moment_and_texture_based_gate_filter(
         RhoHV, texture of Zdr and texture of reflectivity. Gates in these
         fields above these limits as well as gates which are masked or contain
         invalid values will be excluded and not used in calculation which use
-        the filter.  A value of None will disable filtering based upon the
+        the filter. A value of None will disable filtering based upon the
         given field including removing masked or gates with an invalid value.
         To disable the thresholding but retain the masked and invalid filter
         set the parameter to a value above the highest value in the field.
@@ -173,7 +174,7 @@ def moment_and_texture_based_gate_filter(
     Returns
     -------
     gatefilter : :py:class:`GateFilter`
-        A gate filter based upon the described criteria.  This can be
+        A gate filter based upon the described criteria. This can be
         used as a gatefilter parameter to various functions in pyart.correct.
 
     """
@@ -250,6 +251,192 @@ def moment_and_texture_based_gate_filter(
     return gatefilter
 
 
+def temp_based_gate_filter(radar, temp_field=None, min_temp=0.,
+                           thickness=400., beamwidth=None):
+    """
+    Create a filter which removes undesired gates based on temperature. Used
+    primarily to filter out the melting layer and gates above it.
+
+    Parameters
+    ----------
+    radar : Radar
+        Radar object from which the gate filter will be built.
+    temp_field : str
+        Name of the radar field which contains the temperature.
+        A value of None for will use the default field name as defined in
+        the Py-ART configuration file.
+    min_temp : float
+        Minimum value for the temperature in degrees. Gates below this limits
+        as well as gates which are masked or contain invalid values will be
+        excluded and not used in calculation which use the filter. A value of
+        None will disable filtering based upon the field including removing
+        masked or gates with an invalid value. To disable the thresholding but
+        retain the masked and invalid filter set the parameter to a value
+        below the lowest value in the field.
+    thickness : float
+        The estimated thickness of the melting layer in m.
+    beamwidth : float
+        The radar antenna 3 dB beamwidth [deg].
+
+    Returns
+    -------
+    gatefilter : :py:class:`GateFilter`
+        A gate filter based upon the described criteria. This can be
+        used as a gatefilter parameter to various functions in pyart.correct.
+
+    """
+    # parse the field parameters
+    if temp_field is None:
+        temp_field = get_field_name('temperature')
+
+    # make deepcopy of input radar (we do not want to modify the original)
+    radar_aux = deepcopy(radar)
+
+    # filter gates based upon field parameters
+    gatefilter = GateFilter(radar_aux)
+
+    if (min_temp is not None) and (temp_field in radar_aux.fields):
+        gatefilter.exclude_below(temp_field, min_temp)
+        gatefilter.exclude_masked(temp_field)
+        gatefilter.exclude_invalid(temp_field)
+
+    deltar = radar.range['data'][1]-radar.range['data'][0]
+    if beamwidth is not None:
+        beam_rad = beamwidth*np.pi/180.
+    if thickness is not None:
+        temp = radar_aux.fields[temp_field]
+        temp['data'] = np.ma.masked_where(
+            gatefilter.gate_excluded == 1, temp['data'])
+        for ray in range(radar_aux.nrays):
+            gate_h_ray = radar_aux.gate_altitude['data'][ray, :]
+            # index of first excluded gate
+            ind_r = np.where(gatefilter.gate_excluded[ray, :] == 1)[0]
+            if ind_r.size > 0:
+                # some gates are excluded: find the maximum height
+                ind_r = ind_r[0]
+                if beamwidth is None:
+                    hmax = gate_h_ray[ind_r]-thickness
+                else:
+                    # consider also the radar volume
+                    # maximum altitude at the end of the volume
+                    if ind_r < radar_aux.ngates-2:
+                        hmax = (
+                            (gate_h_ray[ind_r] + gate_h_ray[ind_r+1])/2. -
+                            thickness)
+                    else:
+                        hmax = gate_h_ray[ind_r]-thickness
+                    beam_radius = (
+                        (radar.range['data'][ind_r]+deltar/2.)*beam_rad/2.)
+                    delta_h = (
+                        beam_radius
+                        * np.cos(radar.elevation['data'][ray]*np.pi/180.))
+                    hmax -= delta_h
+
+                ind_hmax = np.where(
+                    radar_aux.gate_altitude['data'][ray, :] > hmax)[0]
+                if ind_hmax.size > 0:
+                    ind_hmax = ind_hmax[0]
+                    temp['data'][ray, ind_hmax:] = np.ma.masked
+        radar_aux.add_field(temp_field, temp, replace_existing=True)
+        gatefilter = GateFilter(radar_aux)
+        gatefilter.exclude_masked(temp_field)
+
+    return gatefilter
+
+
+def iso0_based_gate_filter(radar, iso0_field=None, max_h_iso0=0.,
+                           thickness=400., beamwidth=None):
+    """
+    Create a filter which removes undesired gates based height over the iso0.
+    Used primarily to filter out the melting layer and gates above it.
+
+    Parameters
+    ----------
+    radar : Radar
+        Radar object from which the gate filter will be built.
+    iso0_field : str
+        Name of the radar field which contains the height relative to the
+        iso0. A value of None for will use the default field name as defined
+        in the Py-ART configuration file.
+    max_h_iso0 : float
+        Maximum height relative to the iso0 in m. Gates below this limits
+        as well as gates which are masked or contain invalid values will be
+        excluded and not used in calculation which use the filter. A value of
+        None will disable filtering based upon the field including removing
+        masked or gates with an invalid value. To disable the thresholding but
+        retain the masked and invalid filter set the parameter to a value
+        below the lowest value in the field.
+    thickness : float
+        The estimated thickness of the melting layer in m.
+    beamwidth : float
+        The radar antenna 3 dB beamwidth [deg].
+
+    Returns
+    -------
+    gatefilter : :py:class:`GateFilter`
+        A gate filter based upon the described criteria. This can be
+        used as a gatefilter parameter to various functions in pyart.correct.
+
+    """
+    # parse the field parameters
+    if iso0_field is None:
+        iso0_field = get_field_name('height_over_iso0')
+
+    # make deepcopy of input radar (we do not want to modify the original)
+    radar_aux = deepcopy(radar)
+
+    # filter gates based upon field parameters
+    gatefilter = GateFilter(radar_aux)
+
+    if (max_h_iso0 is not None) and (iso0_field in radar_aux.fields):
+        gatefilter.exclude_above(iso0_field, max_h_iso0)
+        gatefilter.exclude_masked(iso0_field)
+        gatefilter.exclude_invalid(iso0_field)
+
+    deltar = radar.range['data'][1]-radar.range['data'][0]
+    if beamwidth is not None:
+        beam_rad = beamwidth*np.pi/180.
+    if thickness is not None:
+        iso0 = radar_aux.fields[iso0_field]
+        iso0['data'] = np.ma.masked_where(
+            gatefilter.gate_excluded == 1, iso0['data'])
+        for ray in range(radar_aux.nrays):
+            gate_h_ray = radar_aux.gate_altitude['data'][ray, :]
+            # index of first excluded gate
+            ind_r = np.where(gatefilter.gate_excluded[ray, :] == 1)[0]
+            if ind_r.size > 0:
+                # some gates are excluded: find the maximum height
+                ind_r = ind_r[0]
+                if beamwidth is None:
+                    hmax = gate_h_ray[ind_r]-thickness
+                else:
+                    # consider also the radar volume
+                    # maximum altitude at the end of the volume
+                    if ind_r < radar_aux.ngates-2:
+                        hmax = (
+                            (gate_h_ray[ind_r] + gate_h_ray[ind_r+1])/2. -
+                            thickness)
+                    else:
+                        hmax = gate_h_ray[ind_r]-thickness
+                    beam_radius = (
+                        (radar.range['data'][ind_r]+deltar/2.)*beam_rad/2.)
+                    delta_h = (
+                        beam_radius
+                        * np.cos(radar.elevation['data'][ray]*np.pi/180.))
+                    hmax -= delta_h
+
+                ind_hmax = np.where(
+                    radar_aux.gate_altitude['data'][ray, :] > hmax)[0]
+                if ind_hmax.size > 0:
+                    ind_hmax = ind_hmax[0]
+                    iso0['data'][ray, ind_hmax:] = np.ma.masked
+        radar_aux.add_field(iso0_field, iso0, replace_existing=True)
+        gatefilter = GateFilter(radar_aux)
+        gatefilter.exclude_masked(iso0_field)
+
+    return gatefilter
+
+
 class GateFilter(object):
     """
     A class for building a boolean arrays for filtering gates based on
@@ -267,7 +454,7 @@ class GateFilter(object):
     exclude_based : bool, optional
         True, the default and suggested method, will begin with all gates
         included and then use the exclude methods to exclude gates based on
-        conditions.  False will begin with all gates excluded from which
+        conditions. False will begin with all gates excluded from which
         a set of gates to include should be set using the include methods.
 
     Attributes
@@ -275,14 +462,14 @@ class GateFilter(object):
     gate_excluded : array, dtype=bool
         Boolean array indicating if a gate should be excluded from a
         calculation. Elements marked True indicate the corresponding gate
-        should be excluded.  Those marked False should be included.
+        should be excluded. Those marked False should be included.
         This is read-only attribute, any changes to the array will NOT
         be reflected in gate_included and will be lost when the attribute is
         accessed again.
     gate_included : array, dtype=bool
         Boolean array indicating if a gate should be included in a
         calculation. Elements marked True indicate the corresponding gate
-        should be include.  Those marked False should be excluded.
+        should be include. Those marked False should be excluded.
         This is read-only attribute, any changes to the array will NOT
         be reflected in gate_excluded and will be lost when the attribute is
         accessed again.

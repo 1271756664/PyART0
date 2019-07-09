@@ -49,11 +49,11 @@ def _decode_noaa_hh_hdr(
         Dictionary containing altitude data and metadata.
     heading_params : dict
         Dictionary of dictionary containing aircraft heading data and
-        metadata.  Contains 'heading', 'roll', pitch', 'drift', 'rotation',
+        metadata. Contains 'heading', 'roll', pitch', 'drift', 'rotation',
         'tilt' and 'georefs_applied' dictionaries.
 
     """
-    xhdr = np.rec.fromstring(raw_extended_headers[..., :68].tostring(),
+    xhdr = np.rec.frombuffer(raw_extended_headers[..., :68].tostring(),
                              dtype=list(NOAA_HH_EXTENDED_HEADER))
 
     # rotation and tilt from azimuth/elevation angles

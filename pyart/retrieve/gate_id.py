@@ -10,8 +10,12 @@ pyart.retrieve.gate_id
 
 """
 
+try:
+    from netCDF4 import num2date, datetime
+except ImportError:
+    from cftime import num2date, datetime
+
 import numpy as np
-import netCDF4
 from scipy import interpolate
 
 from ..config import get_fillvalue, get_metadata, get_field_name
@@ -30,15 +34,15 @@ def map_profile_to_gates(profile, heights, radar, toa=None,
     heights : array
         Monotonically increasing heights in meters with same shape as profile.
     radar : Radar
-        Radar to map to
-    toa: float, optional
+        Radar to map to.
+    toa : float, optional
         Top of atmosphere, where to use profile up to. If None check for
         mask and use lowest element, if no mask uses whole profile.
-    height_field : str
-        Name to use for height field metadata.  None will use the default field
+    height_field : str, optional
+        Name to use for height field metadata. None will use the default field
         name from the Py-ART configuration file.
-    profile_field : str
-        Name to use for interpolate profile field metadata.  None will use the
+    profile_field : str, optional
+        Name to use for interpolate profile field metadata. None will use the
         default field name from the Py-ART configuration file.
 
     Returns
@@ -52,6 +56,10 @@ def map_profile_to_gates(profile, heights, radar, toa=None,
     rg, azg = np.meshgrid(radar.range['data'], radar.azimuth['data'])
     rg, eleg = np.meshgrid(radar.range['data'], radar.elevation['data'])
     _, _, z = antenna_to_cartesian(rg / 1000.0, azg, eleg)
+
+    # Check that z is not a MaskedArray
+    if isinstance(z, np.ma.MaskedArray):
+        z = z.filled(np.NaN)
 
     # find toa is not provided
     if toa is None:
@@ -98,17 +106,17 @@ def fetch_radar_time_profile(sonde_dset, radar, time_key='time',
     radar : Radar
         Radar object from which the nearest profile will be found.
     time_key : string, optional
-        Key to find a CF startard time variable
+        Key to find a CF startard time variable.
     height_key : string, optional
-        Key to find profile height data
+        Key to find profile height data.
     nvars : list, optional
-        NetCDF variable to generated profiles for.  If None (the default) all
+        NetCDF variable to generated profiles for. If None (the default) all
         variables with dimension of time, height will be found in ncvars.
 
     Returns
     -------
     return_dic : dict
-        Profiles at the start time of the radar
+        Profiles at the start time of the radar.
 
     """
     ncvars = sonde_dset.variables
@@ -116,9 +124,9 @@ def fetch_radar_time_profile(sonde_dset, radar, time_key='time',
         time_height_shape = (len(ncvars[time_key]), len(ncvars[height_key]))
         nvars = [k for k, v in ncvars.items() if v.shape == time_height_shape]
 
-    radar_start = netCDF4.num2date(radar.time['data'][0], radar.time['units'])
-    radar_day_start = netCDF4.datetime(radar_start.year, radar_start.month,
-                                       radar_start.day)
+    radar_start = num2date(radar.time['data'][0], radar.time['units'])
+    radar_day_start = datetime(radar_start.year, radar_start.month,
+                               radar_start.day)
     seconds_since_start_of_day = (radar_start - radar_day_start).seconds
     time_index = abs(ncvars[time_key][:] - seconds_since_start_of_day).argmin()
 

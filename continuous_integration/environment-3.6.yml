@@ -8,8 +8,9 @@ dependencies:
   - scipy
   - matplotlib
   - netcdf4
-  - nose
+  - pytest
   - basemap
   - trmm_rsl
   - wradlib
   - cartopy
+  - xarray

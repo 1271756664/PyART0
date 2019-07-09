@@ -1,12 +1,11 @@
-""" Unit Tests for Py-ART's io/mdv.py module. """
+""" Unit Tests for Py-ART's retrieve/echo_class.py module. """
 
 import numpy as np
-from numpy.testing.decorators import skipif
+import pytest
 
 import pyart
 
 
-@skipif(not pyart.retrieve.echo_class._F90_EXTENSIONS_AVAILABLE)
 def test_steiner_conv_strat():
     grid = pyart.testing.make_storm_grid()
     eclass = pyart.retrieve.steiner_conv_strat(grid)

@@ -1,9 +1,14 @@
 """ Unit Tests for Py-ART's config.py module. """
 
-import pyart
 import os
 import warnings
-from imp import reload
+
+import pyart
+
+try:
+    from importlib import reload
+except ImportError:
+    from imp import reload
 
 dirname = os.path.dirname(__file__)
 CUSTOM_CONFIG_FILE = os.path.join(dirname, 'custom_config.py')

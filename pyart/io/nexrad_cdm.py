@@ -14,8 +14,8 @@ Functions for accessing Common Data Model (CDM) NEXRAD Level 2 files.
 
 """
 
-import os
 from datetime import datetime, timedelta
+import os
 
 import netCDF4
 import numpy as np
@@ -28,7 +28,7 @@ from .common import make_time_unit_str, _test_arguments
 
 def read_nexrad_cdm(filename, field_names=None, additional_metadata=None,
                     file_field_names=False, exclude_fields=None,
-                    station=None, **kwargs):
+                    include_fields=None, station=None, **kwargs):
     """
     Read a Common Data Model (CDM) NEXRAD Level 2 file.
 
@@ -37,7 +37,7 @@ def read_nexrad_cdm(filename, field_names=None, additional_metadata=None,
     filename : str
         File name or URL of a Common Data Model (CDM) NEXRAD Level 2 file.
         File of in this format can be created using the NetCDF Java Library
-        tools [1]_.  A URL of a OPeNDAP file on the UCAR THREDDS Data
+        tools [1]_. A URL of a OPeNDAP file on the UCAR THREDDS Data
         Server [2]_ is also accepted the netCDF4 library has been compiled
         with OPeNDAP support.
     field_names : dict, optional
@@ -49,7 +49,7 @@ def read_nexrad_cdm(filename, field_names=None, additional_metadata=None,
     additional_metadata : dict of dicts, optional
         Dictionary of dictionaries to retrieve metadata from during this read.
         This metadata is not used during any successive file reads unless
-        explicitly included.  A value of None, the default, will not
+        explicitly included. A value of None, the default, will not
         introduct any addition metadata and the file specific or default
         metadata as specified by the metadata configuration file will be used.
     file_field_names : bool, optional
@@ -59,12 +59,17 @@ def read_nexrad_cdm(filename, field_names=None, additional_metadata=None,
         `additional_metadata`.
     exclude_fields : list or None, optional
         List of fields to exclude from the radar object. This is applied
-        after the `file_field_names` and `field_names` parameters.
+        after the `file_field_names` and `field_names` parameters. Set
+        to None to include all fields specified by include_fields.
+    include_fields : list or None, optional
+        List of fields to include from the radar object. This is applied
+        after the `file_field_names` and `field_names` parameters. Set
+        to None to include all fields not specified by exclude_fields.
     station : str
         Four letter ICAO name of the NEXRAD station used to determine the
-        location in the returned radar object.  This parameter is only
+        location in the returned radar object. This parameter is only
         used when the location is not contained in the file, which occur
-        in older NEXRAD files.  If the location is not provided in the file
+        in older NEXRAD files. If the location is not provided in the file
         and this parameter is set to None the station name will be determined
         from the filename.
 
@@ -86,7 +91,7 @@ def read_nexrad_cdm(filename, field_names=None, additional_metadata=None,
     # create metadata retrieval object
     filemetadata = FileMetadata('nexrad_cdm', field_names,
                                 additional_metadata, file_field_names,
-                                exclude_fields)
+                                exclude_fields, include_fields)
 
     # open the file
     dataset = netCDF4.Dataset(filename)
@@ -204,9 +209,9 @@ def read_nexrad_cdm(filename, field_names=None, additional_metadata=None,
     if ((hasattr(dataset, 'StationLatitude') and
          hasattr(dataset, 'StationLongitude') and
          hasattr(dataset, 'StationElevationInMeters'))):
-            lat = dataset.StationLatitude
-            lon = dataset.StationLongitude
-            alt = dataset.StationElevationInMeters
+        lat = dataset.StationLatitude
+        lon = dataset.StationLongitude
+        alt = dataset.StationElevationInMeters
     else:
         # if no locations in the file look them up from station name.
         if station is None:
