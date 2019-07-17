@@ -70,10 +70,10 @@ class C98DRadFile(object):
             if self.radial_header['radial_state'] in [3, 0]:
                 self.cut_start.append(num)   
             elif self.radial_header['radial_state'] == 4:
-                self.cut_end.append(num+1)
+                self.cut_end.append(num)
                 return
             elif self.radial_header['radial_state'] == 2:
-                self.cut_end.append(num+1)
+                self.cut_end.append(num)
 
             num += 1
                 

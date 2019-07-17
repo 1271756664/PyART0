@@ -9,7 +9,7 @@ import warnings
 
 import numpy as np
 
-#from .C98DRadFile import C98DRadFile
+from .C98DRadFile import C98DRadFile
 from pyart.config import FileMetadata, get_fillvalue
 from pyart.core.radar import Radar
 from pyart.io.common import make_time_unit_str, _test_arguments, prepare_for_read
@@ -121,5 +121,5 @@ def c98dfile_archive(filename, field_names=None, additional_metadata=None,
                  sweep_number, sweep_mode, fixed_angle, sweep_start_ray_index,
                  sweep_end_ray_index,
                  azimuth, elevation,
-                 instrument_parameters=None), nfile
+                 instrument_parameters=None)
         
