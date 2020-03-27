@@ -14,9 +14,10 @@ Function for mathematical, signal processing and numerical routines.
 
 """
 
-from __future__ import print_function
 import numpy as np
 from scipy import signal
+
+from ..config import get_fillvalue
 
 
 def angular_texture_2d(image, N, interval):
@@ -71,11 +72,25 @@ def angular_texture_2d(image, N, interval):
 
 
 def rolling_window(a, window):
-    """ Create a rolling window object for application of functions
-    eg: result=np.ma.std(array, 11), 1). """
+    """ create a rolling window object for application of functions
+    eg: result=np.ma.std(array, 11), 1)"""
+    # create a rolling window with the data
     shape = a.shape[:-1] + (a.shape[-1] - window + 1, window)
     strides = a.strides + (a.strides[-1], )
-    return np.lib.stride_tricks.as_strided(a, shape=shape, strides=strides)
+    data_wind = np.lib.stride_tricks.as_strided(
+        a, shape=shape, strides=strides)
+
+    # create a rolling window with the mask
+    mask = np.ma.getmaskarray(a)
+    shape = mask.shape[:-1] + (mask.shape[-1] - window + 1, window)
+    strides = mask.strides + (mask.strides[-1], )
+    mask_wind = np.lib.stride_tricks.as_strided(
+        mask, shape=shape, strides=strides)
+
+    # masked rolled data
+    data_wind = np.ma.masked_where(mask_wind, data_wind)
+
+    return data_wind
 
 
 def texture(radar, var):
@@ -115,9 +130,14 @@ def texture_along_ray(radar, var, wind_size=7):
     half_wind = int((wind_size-1)/2)
     fld = radar.fields[var]['data']
     tex = np.ma.zeros(fld.shape)
-    for timestep in range(tex.shape[0]):
-        ray = np.ma.std(rolling_window(fld[timestep, :], wind_size), 1)
-        tex[timestep, half_wind:-half_wind] = ray
-        tex[timestep, 0:half_wind] = np.ones(half_wind) * ray[0]
-        tex[timestep, -half_wind:] = np.ones(half_wind) * ray[-1]
+    tex[:] = np.ma.masked
+    tex.set_fill_value(get_fillvalue())
+
+    tex_aux = np.ma.std(rolling_window(fld, wind_size), -1)
+    tex[:, half_wind:-half_wind] = tex_aux
+    tex[:, 0:half_wind] = np.broadcast_to(
+        tex_aux[:, 0].reshape(tex.shape[0], 1), (tex.shape[0], half_wind))
+    tex[:, -half_wind:] = np.broadcast_to(
+        tex_aux[:, -1].reshape(tex.shape[0], 1), (tex.shape[0], half_wind))
+
     return tex

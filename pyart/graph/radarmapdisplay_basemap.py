@@ -96,7 +96,6 @@ class RadarMapDisplayBasemap(RadarDisplay):
         self.basemap = None
         self._x0 = None     # x axis radar location in map coords (meters)
         self._y0 = None     # y axis radar location in map coords (meters)
-        return
 
     def _check_basemap(self):
         """ Check that basemap is not None, raise ValueError if it is. """
@@ -256,7 +255,7 @@ class RadarMapDisplayBasemap(RadarDisplay):
             data = np.ma.masked_outside(data, vmin, vmax)
 
         # create the basemap if not provided
-        if type(basemap) != Basemap:
+        if not isinstance(basemap, Basemap):
             using_corners = (None not in [min_lon, min_lat, max_lon, max_lat])
             if using_corners:
                 basemap = Basemap(
@@ -321,7 +320,6 @@ class RadarMapDisplayBasemap(RadarDisplay):
             self.plot_colorbar(
                 mappable=pm, label=colorbar_label, field=field, fig=fig,
                 ax=ax, ticks=ticks, ticklabs=ticklabs)
-        return
 
     def plot_point(self, lon, lat, symbol='ro', label_text=None,
                    label_offset=(None, None), **kwargs):

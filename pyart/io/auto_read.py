@@ -14,7 +14,6 @@ Automatic reading of radar files by detecting format.
 
 import bz2
 import gzip
-import pathlib
 
 import netCDF4
 
@@ -27,9 +26,6 @@ from .nexrad_cdm import read_nexrad_cdm
 from .nexradl3_read import read_nexrad_level3
 from .uf import read_uf
 from .chl import read_chl
-from .common import radar_format
-from .sband_archive import read_sband_archive
-from .c98d_archive import C98DRadFile
 
 
 def read(filename, use_rsl=False, **kwargs):
@@ -146,13 +142,6 @@ def read(filename, use_rsl=False, **kwargs):
     rsl_formats = ['HDF4', 'RSL', 'DORAD', 'LASSEN']
     if filetype in rsl_formats and _RSL_AVAILABLE:
         return read_rsl(filename, **kwargs)
-
-    cn_radar = radar_format(filename)
-
-    if cn_radar == 'WSR98D':
-        return C98DRadFile(filename, **kwargs)
-    elif cn_radar == 'SAB':
-        return read_sband_archive(filename, **kwargs)
 
     raise TypeError('Unknown or unsupported file format: ' + filetype)
 

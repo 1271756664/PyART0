@@ -6,7 +6,7 @@ Utilities (:mod:`pyart.util`)
 Miscellaneous utility functions.
 
 The location and names of these functions within Py-ART may change between
-versions without depeciation, use with caution.
+versions without depreciation, use with caution.
 
 .. currentmodule:: pyart.util
 
@@ -33,15 +33,29 @@ Miscellaneous functions
 
     cross_section_ppi
     cross_section_rhi
+    colocated_gates
+    intersection
     datetime_from_radar
     datetimes_from_radar
     datetime_from_dataset
     datetimes_from_dataset
     datetime_from_grid
     estimate_noise_hs74
+    estimate_noise_ivic13
+    get_ivic_pct
+    get_ivic_flat_reg_var_max
+    get_ivic_snr_thr
+    ivic_pct_table
+    ivic_snr_thr_table
+    ivic_flat_reg_var_max_table
     is_vpt
     to_vpt
     join_radar
+    join_spectra
+    cut_radar
+    cut_radar_spectra
+    radar_from_spectra
+    interpol_spectra
     simulated_vel_from_profile
     texture_along_ray
     texture
@@ -58,8 +72,15 @@ from .datetime_utils import datetime_from_radar, datetimes_from_radar
 from .datetime_utils import datetime_from_dataset, datetimes_from_dataset
 from .datetime_utils import datetime_from_grid
 from .xsect import cross_section_ppi, cross_section_rhi
+from .xsect import colocated_gates, intersection
 from .hildebrand_sekhon import estimate_noise_hs74
-from .radar_utils import is_vpt, to_vpt, join_radar
+from .ivic import estimate_noise_ivic13, get_ivic_pct
+from .ivic import get_ivic_flat_reg_var_max, get_ivic_snr_thr
+from .ivic import ivic_pct_table, ivic_snr_thr_table
+from .ivic import ivic_flat_reg_var_max_table
+from .radar_utils import is_vpt, to_vpt, join_radar, join_spectra
+from .radar_utils import cut_radar, cut_radar_spectra, radar_from_spectra
+from .radar_utils import interpol_spectra
 from .simulated_vel import simulated_vel_from_profile
 from .sigmath import texture_along_ray, rolling_window
 from .sigmath import texture, angular_texture_2d

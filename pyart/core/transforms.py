@@ -10,6 +10,7 @@ and antenna (azimuth, elevation, range) coordinate systems.
     :toctree: generated/
 
     antenna_to_cartesian
+    cartesian_to_antenna
     antenna_vectors_to_cartesian
     antenna_to_cartesian_track_relative
     antenna_to_cartesian_earth_relative
@@ -20,6 +21,7 @@ and antenna (azimuth, elevation, range) coordinate systems.
     geographic_to_cartesian
     cartesian_to_geographic_aeqd
     geographic_to_cartesian_aeqd
+    wgs84_to_swissCH1903
 
     _interpolate_axes_edges
     _interpolate_azimuth_edges
@@ -89,8 +91,8 @@ def antenna_to_cartesian(ranges, azimuths, elevations):
         Edition, 1993, p. 21.
 
     """
-    theta_e = elevations * np.pi / 180.0    # elevation angle in radians.
-    theta_a = azimuths * np.pi / 180.0      # azimuth angle in radians.
+    theta_e = elevations * PI / 180.0    # elevation angle in radians.
+    theta_a = azimuths * PI / 180.0      # azimuth angle in radians.
     R = 6371.0 * 1000.0 * 4.0 / 3.0     # effective radius of earth in meters.
     r = ranges * 1000.0                 # distances to gates in meters.
 
@@ -650,3 +652,268 @@ def cartesian_to_geographic_aeqd(x, y, lon_0, lat_0, R=6370997.):
     lon_deg[lon_deg < -180] += 360.
 
     return lon_deg, lat_deg
+
+
+def cartesian_to_antenna(x, y, z):
+    """
+    Returns antenna coordinates from Cartesian coordinates.
+
+    Parameters
+    ----------
+    x, y, z : array
+        Cartesian coordinates in meters from the radar.
+
+    Returns
+    -------
+    ranges : array
+        Distances to the center of the radar gates (bins) in m.
+    azimuths : array
+        Azimuth angle of the radar in degrees. [-180., 180]
+    elevations : array
+        Elevation angle of the radar in degrees.
+
+    """
+    ranges = np.sqrt(x ** 2. + y ** 2. + z ** 2.)
+    elevations = np.rad2deg(np.arctan(z / np.sqrt(x ** 2. + y ** 2.)))
+    azimuths = np.rad2deg(np.arctan2(x, y))  # [-180, 180]
+    azimuths[azimuths < 0.] += 360.  # [0, 360]
+
+    return ranges, azimuths, elevations
+
+
+def add_2d_latlon_axis(grid, **kwargs):
+    """
+    Add the latitude and longitude for grid points in the y, x plane.
+
+    Adds a **latitude** and **longitude** dictionary to the axes attribute
+    of a provided grid.  Addition is done in-place, nothing is returned from
+    this function.  These dictionaries contain 2D arrays which specify the
+    latitude and longitude of every point in the y, x plane.
+
+    If available, the conversion is done using basemap.pyproj, extra arguments
+    are passed to pyproj.Proj. If not available, an internal spherical
+    azimuthal equidistant transformation is is used.
+
+    Parameters
+    ----------
+    grid: grid object
+        Cartesian grid object containing the 1d axes "x_disp", "y_disp" and
+        scalar axes 'lat', 'lon'.
+    kwargs: Pyproj options
+        Options to be passed to Proj. If projection is not specified here it
+        uses proj='aeqd' (azimuthal equidistant)
+
+    Notes
+    -----
+    If Basemap is not available, calculation of the latitude, longitude is
+    done using a azimuthal equidistant projection projection [1].
+    It uses the mean radius of earth (6371 km)
+
+    .. math::
+
+        c = \\sqrt(x^2 + y^2)/R
+
+        azi = \\arctan2(y,x) \\text{  # from east to north}
+
+        lat = \\arcsin(\\cos(c)*\\sin(lat0)+\\sin(azi)*\\sin(c)*\\cos(lat0))
+
+        lon = \\arctan2(\\cos(azi)*\\sin(c),\\cos(c)*\\cos(lat0)-
+                        \\sin(azi)*\\sin(c)*\\sin(lat0)) + lon0
+
+    Where x, y are the Cartesian position from the center of projection;
+    lat, lon the corresponding latitude and longitude; lat0, lon0 the latitude
+    and longitude of the center of the projection; R the mean radius of the
+    earth (6371 km)
+
+    References
+    ----------
+    .. [1] Snyder, J. P. Map Projections--A Working Manual. U. S. Geological
+        Survey Professional Paper 1395, 1987, pp. 191-202.
+
+    """
+    warnings.warn(
+        "add_2d_latlon_axis is deprecated and will be removed in a " +
+        "future version of Py-ART", DeprecationWarning)
+    try:
+        from mpl_toolkits.basemap import pyproj
+        if 'proj' not in kwargs:
+            kwargs['proj'] = 'aeqd'
+        x, y = np.meshgrid(
+            grid.axes["x_disp"]['data'], grid.axes["y_disp"]['data'])
+        b = pyproj.Proj(lat_0=grid.axes["lat"]['data'][0],
+                        lon_0=grid.axes["lon"]['data'][0], **kwargs)
+        lon, lat = b(x, y, inverse=True)
+    except ImportError:
+        warnings.warn('No basemap found, using internal implementation '
+                      'for converting azimuthal equidistant to latlon')
+        # azimutal equidistant projetion to latlon
+        R = 6371.0 * 1000.0     # radius of earth in meters.
+
+        x, y = np.meshgrid(grid.axes["x_disp"]['data'],
+                           grid.axes["y_disp"]['data'])
+
+        c = np.sqrt(x*x + y*y) / R
+        phi_0 = grid.axes["lat"]['data'] * PI / 180
+        azi = np.arctan2(y, x)  # from east to north
+
+        lat = np.arcsin(np.cos(c) * np.sin(phi_0) +
+                        np.sin(azi) * np.sin(c) * np.cos(phi_0)) * 180 / PI
+        lon = (np.arctan2(np.cos(azi) * np.sin(c), np.cos(c) * np.cos(phi_0) -
+                          np.sin(azi) * np.sin(c) * np.sin(phi_0)) * 180 /
+               PI + grid.axes["lon"]['data'])
+        lon = np.fmod(lon + 180, 360) - 180
+
+    lat_axis = {
+        'data':  lat,
+        'long_name': 'Latitude for points in Cartesian system',
+        'axis': 'YX',
+        'units': 'degree_N',
+        'standard_name': 'latitude',
+    }
+
+    lon_axis = {
+        'data': lon,
+        'long_name': 'Longitude for points in Cartesian system',
+        'axis': 'YX',
+        'units': 'degree_E',
+        'standard_name': 'longitude',
+    }
+
+    grid.axes["latitude"] = lat_axis
+    grid.axes["longitude"] = lon_axis
+
+
+def corner_to_point(corner, point):
+    """
+    Return the x, y distances in meters from a corner to a point.
+
+    Assumes a spherical earth model.
+
+    This function is Deprecated, use the :py:func:`geographic_to_cartesian`
+    function as a replacement.
+
+    Parameters
+    ----------
+    corner : (float, float)
+        Latitude and longitude in degrees of the corner.
+    point : (float, float)
+        Latitude and longitude in degrees of the point.
+
+    Returns
+    -------
+    x, y : floats
+        Distances from the corner to the point in meters.
+
+    """
+    warnings.warn(
+        "corner_to_point is deprecated and will be removed in a future " +
+        "version of Py-ART.\n" +
+        "Additionally use of this function is discourage, the " +
+        "geographic_to_cartesian function produces similar results while " +
+        "allowing the map projection to be specified. ", DeprecationWarning)
+    Re = 6371.0 * 1000.0
+    Rc = _ax_radius(point[0], units='degrees')
+    # print Rc/Re
+    y = ((point[0] - corner[0]) / 360.0) * PI * 2.0 * Re
+    x = ((point[1] - corner[1]) / 360.0) * PI * 2.0 * Rc
+    return x, y
+
+
+def wgs84_to_swissCH1903(lon, lat, alt, no_altitude_transform=False):
+    """
+    Convert WGS84 coordinates to swiss coordinates (CH1903 / LV03)
+
+    The formulas for the coordinates transformation are taken from:
+    "Formeln und Konstanten für die Berechnung der Schweizerischen
+    schiefachsigen Zylinderprojektion und der Transformation
+    zwischen Koordinatensystemen", chapter 4. "Näherungslösungen
+    CH1903 <=> WGS84"
+    Bundesamt für Landestopografie swisstopo (http://www.swisstopo.admin.ch),
+    Oktober 2008
+
+    Test example
+    ------------
+    wgs84 input:
+        latitude  : 46 deg 2' 38.87''
+        longitude : 8 deg 43' 49.79''
+        altitude  : 650.60 m
+    Result swiss CH1903:
+        chy = 699 999.76  (700000)
+        chx =  99 999.97  (100000)
+        chh = 600.05      (600)
+
+    Parameters
+    ----------
+    lon, lat : array-like
+        Geographic coordinates WGS84 in degrees.
+    alt : array-like
+        Altitude in m
+    no_altitude_transform : bool
+        If set, do not convert altitude
+
+    Returns
+    -------
+    chy, chx, chh : array-like
+       Coordinates in swiss CH1903 coordinates in meter
+
+    """
+
+    # 1. Transform longitude and latitude from [deg] to [angular seconds]
+    phi_sec = lat * 3600.0
+    lambda_sec = lon * 3600.0
+
+    # 2. Calculate auxiliary quantities:
+    phi = (phi_sec - 169028.66) / 10000.0
+    lam = (lambda_sec - 26782.5) / 10000.0
+
+    # 3. Use approximation formulas for chx, chy and altitude
+    chy = \
+        600072.37 + \
+        211455.93 * lam - \
+        10938.51 * lam * phi - \
+        0.36 * lam * phi**2 - \
+        44.54 * lam**3
+
+    chx = \
+        200147.07 + \
+        308807.95 * phi + \
+        3745.25 * lam**2 + \
+        76.63 * phi**2 - \
+        194.56 * lam**2 * phi + \
+        119.79 * phi**3
+
+    if (no_altitude_transform):
+        chh = alt
+    else:
+        chh = alt - 49.55 + \
+              2.73 * lam + \
+              6.94 * phi
+
+    return (chy, chx, chh)
+
+
+def _ax_radius(lat, units='radians'):
+    """
+    Return the radius of a constant latitude circle for a given latitude.
+
+    Parameters
+    ----------
+    lat : float
+        Latitude at which to calculate constant latitude circle (parallel)
+        radius.
+    units : 'radians' or 'degrees'
+        Units of lat, either 'radians' or 'degrees'.
+
+    Returns
+    -------
+    R : float
+        Radius in meters of a constant latitude circle (parallel).
+
+    """
+    Re = 6371.0 * 1000.0
+    if units == 'degrees':
+        const = PI / 180.0
+    else:
+        const = 1.0
+    R = Re * np.sin(PI / 2.0 - abs(lat * const))
+    return R

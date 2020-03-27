@@ -19,6 +19,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 try:
     import cartopy
+    from cartopy.io.img_tiles import Stamen
     _CARTOPY_AVAILABLE = True
 except ImportError:
     _CARTOPY_AVAILABLE = False
@@ -77,7 +78,7 @@ class RadarMapDisplay(RadarDisplay):
         Scan angle in degrees.
     grid_projection : cartopy.crs
         AzimuthalEquidistant cartopy projection centered on radar.
-        Used to transform points into map projection
+        Used to transform points into map projection.
 
     """
 
@@ -106,7 +107,6 @@ class RadarMapDisplay(RadarDisplay):
         self.ax = None
         self._x0 = None     # x axis radar location in map coords (meters)
         self._y0 = None     # y axis radar location in map coords (meters)
-        return
 
     def _check_ax(self):
         """ Check that a GeoAxes object exists, raise ValueError if not """
@@ -123,8 +123,9 @@ class RadarMapDisplay(RadarDisplay):
             width=None, height=None, lon_0=None, lat_0=None,
             resolution='110m', shapefile=None, shapefile_kwargs=None,
             edges=True, gatefilter=None,
-            filter_transitions=True, embelish=True, raster=False,
-            ticks=None, ticklabs=None, alpha=None):
+            filter_transitions=True, embelish=True,
+            maps_list=['countries', 'coastlines'], raster=False,
+            ticks=None, ticklabs=None, alpha=None, background_zoom=8):
         """
         Plot a PPI volume sweep onto a geographic map.
 
@@ -148,14 +149,14 @@ class RadarMapDisplay(RadarDisplay):
             Luminance maximum value, None for default value.
             Parameter is ignored is norm is not None.
         norm : Normalize or None, optional
-            matplotlib Normalize instance used to scale luminance data.  If not
-            None the vmax and vmin parameters are ignored.  If None, vmin and
+            matplotlib Normalize instance used to scale luminance data. If not
+            None the vmax and vmin parameters are ignored. If None, vmin and
             vmax are used for luminance scaling.
         cmap : str or None
             Matplotlib colormap name. None will use the default colormap for
             the field being plotted as specified by the Py-ART configuration.
         mask_outside : bool
-            True to mask data outside of vmin, vmax.  False performs no
+            True to mask data outside of vmin, vmax. False performs no
             masking.
         title : str
             Title to label plot with, None to use default title generated from
@@ -164,7 +165,7 @@ class RadarMapDisplay(RadarDisplay):
         title_flag : bool
             True to add a title to the plot, False does not add a title.
         colorbar_flag : bool
-            True to add a colorbar with label to the axis.  False leaves off
+            True to add a colorbar with label to the axis. False leaves off
             the colorbar.
         ticks : array
             Colorbar custom tick label locations.
@@ -209,13 +210,13 @@ class RadarMapDisplay(RadarDisplay):
             applied to data.
         filter_transitions : bool
             True to remove rays where the antenna was in transition between
-            sweeps from the plot.  False will include these rays in the plot.
+            sweeps from the plot. False will include these rays in the plot.
             No rays are filtered when the antenna_transition attribute of the
             underlying radar is not present.
         edges : bool
             True will interpolate and extrapolate the gate edges from the
             range, azimuth and elevations in the radar, treating these
-            as specifying the center of each gate.  False treats these
+            as specifying the center of each gate. False treats these
             coordinates themselved as the gate edges, resulting in a plot
             in which the last gate in each ray and the entire last ray are not
             not plotted.
@@ -223,21 +224,30 @@ class RadarMapDisplay(RadarDisplay):
             True by default. Set to False to supress drawing of coastlines
             etc.. Use for speedup when specifying shapefiles.
             Note that lat lon labels only work with certain projections.
+        maps_list: list of strings
+            if embelish is true the list of maps to use. default countries,
+            coastlines
         raster : bool
-            False by default.  Set to true to render the display as a raster
-            rather than a vector in call to pcolormesh.  Saves time in plotting
-            high resolution data over large areas.  Be sure to set the dpi
+            False by default. Set to true to render the display as a raster
+            rather than a vector in call to pcolormesh. Saves time in plotting
+            high resolution data over large areas. Be sure to set the dpi
             of the plot for your application if you save it as a vector format
             (i.e., pdf, eps, svg).
         alpha : float or None
-            Set the alpha tranparency of the radar plot. Useful for
+            Set the alpha transparency of the radar plot. Useful for
             overplotting radar over other datasets.
+        background_zoom : int
+            Zoom of the background image. A highest number provides more
+            detail at the cost of processing speed
 
         """
         # parse parameters
         ax, fig = parse_ax_fig(ax, fig)
         vmin, vmax = parse_vmin_vmax(self._radar, field, vmin, vmax)
         cmap = parse_cmap(cmap, field)
+        if norm is not None:  # if norm is set do not override with vmin/vmax
+            vmin = vmax = None
+
         if lat_lines is None:
             lat_lines = np.arange(30, 46, 1)
         if lon_lines is None:
@@ -254,18 +264,29 @@ class RadarMapDisplay(RadarDisplay):
         if mask_outside:
             data = np.ma.masked_outside(data, vmin, vmax)
 
-        # initialize instance of GeoAxes if not provided
-        if hasattr(ax, 'projection'):
+        # If background map is used the plot projection should be
+        # that of the map
+        if 'relief' in maps_list:
+            tiler = Stamen('terrain-background')
+            projection = tiler.crs
+            ax = plt.axes(projection=projection)
+            warnings.warn(
+                'The projection of the image is set to that of the ' +
+                'background map, i.e. '+str(projection), UserWarning)
+        elif hasattr(ax, 'projection'):
             projection = ax.projection
         else:
+            # initialize instance of GeoAxes if not provided
             if projection is None:
-                # set map projection to LambertConformal if none is specified
+                # set map projection to LambertConformal if none is
+                # specified
                 projection = cartopy.crs.LambertConformal(
                     central_longitude=lon_0, central_latitude=lat_0)
-                warnings.warn("No projection was defined for the axes."
-                              + " Overridding defined axes and using default "
-                              + "axes.",
-                              UserWarning)
+                warnings.warn(
+                    "No projection was defined for the axes." +
+                    " Overridding defined axes and using default " +
+                    "projection "+str(projection), UserWarning)
+
             ax = plt.axes(projection=projection)
 
         if min_lon:
@@ -276,8 +297,6 @@ class RadarMapDisplay(RadarDisplay):
                           crs=self.grid_projection)
 
         # plot the data
-        if norm is not None:  # if norm is set do not override with vmin/vmax
-            vmin = vmax = None
         pm = ax.pcolormesh(x * 1000., y * 1000., data, alpha=alpha,
                            vmin=vmin, vmax=vmax, cmap=cmap,
                            norm=norm, transform=self.grid_projection)
@@ -288,24 +307,105 @@ class RadarMapDisplay(RadarDisplay):
 
         # add embelishments
         if embelish is True:
-            # Create a feature for States/Admin 1 regions at 1:resolution
-            # from Natural Earth
-            states_provinces = cartopy.feature.NaturalEarthFeature(
-                category='cultural',
-                name='admin_1_states_provinces_lines',
-                scale=resolution,
-                facecolor='none')
-            ax.coastlines(resolution=resolution)
-            ax.add_feature(states_provinces, edgecolor='gray')
+            for cartomap in maps_list:
+                if cartomap == 'relief':
+                    ax.add_image(tiler, background_zoom)
+                elif cartomap == 'countries':
+                    # add countries
+                    countries = cartopy.feature.NaturalEarthFeature(
+                        category='cultural',
+                        name='admin_0_countries',
+                        scale=resolution,
+                        facecolor='none')
+                    ax.add_feature(countries, edgecolor='black')
+                elif cartomap == 'provinces':
+                    # Create a feature for States/Admin 1 regions at
+                    # 1:resolution from Natural Earth
+                    states_provinces = cartopy.feature.NaturalEarthFeature(
+                        category='cultural',
+                        name='admin_1_states_provinces_lines',
+                        scale=resolution,
+                        facecolor='none')
+                    ax.add_feature(states_provinces, edgecolor='gray')
+                elif cartomap == 'urban_areas' and resolution in ('10m', '50m'):
+                    urban_areas = cartopy.feature.NaturalEarthFeature(
+                        category='cultural',
+                        name='urban_areas',
+                        scale=resolution)
+                    ax.add_feature(
+                        urban_areas, edgecolor='brown', facecolor='brown',
+                        alpha=0.25)
+                elif cartomap == 'roads' and resolution == '10m':
+                    roads = cartopy.feature.NaturalEarthFeature(
+                        category='cultural',
+                        name='roads',
+                        scale=resolution)
+                    ax.add_feature(roads, edgecolor='red', facecolor='none')
+                elif cartomap == 'railroads' and resolution == '10m':
+                    railroads = cartopy.feature.NaturalEarthFeature(
+                        category='cultural',
+                        name='railroads',
+                        scale=resolution)
+                    ax.add_feature(
+                        railroads, edgecolor='green', facecolor='none',
+                        linestyle=':')
+                elif cartomap == 'coastlines':
+                    ax.coastlines(resolution=resolution)
+                elif cartomap == 'lakes':
+                    # add lakes
+                    lakes = cartopy.feature.NaturalEarthFeature(
+                        category='physical',
+                        name='lakes',
+                        scale=resolution)
+                    ax.add_feature(
+                        lakes, edgecolor='blue', facecolor='blue', alpha=0.25)
+                elif resolution == '10m' and cartomap == 'lakes_europe':
+                    lakes_europe = cartopy.feature.NaturalEarthFeature(
+                        category='physical',
+                        name='lakes_europe',
+                        scale=resolution)
+                    ax.add_feature(
+                        lakes_europe, edgecolor='blue', facecolor='blue',
+                        alpha=0.25)
+                elif cartomap == 'rivers':
+                    # add rivers
+                    rivers = cartopy.feature.NaturalEarthFeature(
+                        category='physical',
+                        name='rivers_lake_centerlines',
+                        scale=resolution)
+                    ax.add_feature(rivers, edgecolor='blue', facecolor='none')
+                elif resolution == '10m' and cartomap == 'rivers_europe':
+                    rivers_europe = cartopy.feature.NaturalEarthFeature(
+                        category='physical',
+                        name='rivers_europe',
+                        scale=resolution)
+                    ax.add_feature(
+                        rivers_europe, edgecolor='blue', facecolor='none')
+                elif cartomap == 'populated_places':
+                    ax = _add_populated_places(ax, resolution=resolution)
+                else:
+                    warnings.warn(
+                        'map '+cartomap+' for resolution '+resolution +
+                        ' not available', UserWarning)
 
             # labeling gridlines poses some difficulties depending on the
             # projection, so we need some projection-spectific methods
-            if ax.projection in [cartopy.crs.PlateCarree(),
-                                 cartopy.crs.Mercator()]:
+            if isinstance(ax.projection,
+                          (cartopy.crs.PlateCarree, cartopy.crs.Mercator)):
                 gl = ax.gridlines(xlocs=lon_lines, ylocs=lat_lines,
                                   draw_labels=True)
                 gl.xlabels_top = False
                 gl.ylabels_right = False
+
+                ax.text(
+                    0.5, -0.1, 'longitude [deg]', va='bottom', ha='center',
+                    rotation='horizontal', rotation_mode='anchor',
+                    transform=ax.transAxes)
+
+                ax.text(
+                    -0.12, 0.55, 'latitude [deg]', va='bottom', ha='center',
+                    rotation='vertical', rotation_mode='anchor',
+                    transform=ax.transAxes)
 
             elif isinstance(ax.projection, cartopy.crs.LambertConformal):
                 fig.canvas.draw()
@@ -322,6 +422,7 @@ class RadarMapDisplay(RadarDisplay):
                     lambert_yticks(ax, lat_lines)
             else:
                 ax.gridlines(xlocs=lon_lines, ylocs=lat_lines)
+
 
         # plot the data and optionally the shape file
         # we need to convert the radar gate locations (x and y) which are in
@@ -350,7 +451,6 @@ class RadarMapDisplay(RadarDisplay):
                 ax=ax, ticks=ticks, ticklabs=ticklabs)
         # keep track of this GeoAxes object for later
         self.ax = ax
-        return
 
     def plot_point(self, lon, lat, symbol='ro', label_text=None,
                    label_offset=(None, None), **kwargs):
@@ -369,7 +469,7 @@ class RadarMapDisplay(RadarDisplay):
             Matplotlib compatible string which specified the symbol of the
             point.
         label_text : str, optional.
-            Text to label symbol with.  If None no label will be added.
+            Text to label symbol with. If None no label will be added.
         label_offset : [float, float]
             Offset in lon, lat degrees for the bottom left corner of the label
             text relative to the point. A value of None will use 0.01.
@@ -445,7 +545,7 @@ class RadarMapDisplay(RadarDisplay):
         ----------
         range_ring_location_km : float
             Location of range ring in km.
-        npts: int
+        npts : int
             Number of points in the ring, higher for better resolution.
         line_style : str
             Matplotlib compatible string which specified the line
@@ -468,7 +568,6 @@ class RadarMapDisplay(RadarDisplay):
 
 # These methods are a hack to allow gridlines when the projection is lambert
 # http://nbviewer.jupyter.org/gist/ajdawson/dd536f786741e987ae4e
-
 def find_side(ls, side):
     """
     Given a shapely LineString which is assumed to be rectangular, return the
@@ -483,7 +582,7 @@ def find_side(ls, side):
 
 
 def lambert_xticks(ax, ticks):
-    """Draw ticks on the bottom x-axis of a Lambert Conformal projection."""
+    """ Draw ticks on the bottom x-axis of a Lambert Conformal projection. """
     def te(xy):
         return xy[0]
 
@@ -498,7 +597,7 @@ def lambert_xticks(ax, ticks):
 
 
 def lambert_yticks(ax, ticks):
-    """Draw ticks on the left y-axis of a Lambert Conformal projection."""
+    """ Draw ticks on the left y-axis of a Lambert Conformal projection. """
     def te(xy):
         return xy[1]
 
@@ -513,7 +612,7 @@ def lambert_yticks(ax, ticks):
 
 
 def _lambert_ticks(ax, ticks, tick_location, line_constructor, tick_extractor):
-    """Get the tick locations and labels for a Lambert Conformal projection."""
+    """ Get the tick locations and labels for a Lambert Conformal projection. """
     outline_patch = sgeom.LineString(
         ax.outline_patch.get_path().vertices.tolist())
     axis = find_side(outline_patch, tick_location)
@@ -530,8 +629,12 @@ def _lambert_ticks(ax, ticks, tick_location, line_constructor, tick_extractor):
         if not locs:
             tick = [None]
         else:
-            tick = tick_extractor(locs.xy)
+            try:
+                tick = tick_extractor(locs.xy)
+            except AttributeError:
+                tick = [None]
         _ticks.append(tick[0])
+
     # Remove ticks that aren't visible:
     ticklabels = copy(ticks)
     while True:
@@ -542,3 +645,57 @@ def _lambert_ticks(ax, ticks, tick_location, line_constructor, tick_extractor):
         _ticks.pop(index)
         ticklabels = np.delete(ticklabels, index)
     return _ticks, ticklabels
+
+
+def _add_populated_places(ax, resolution='10m'):
+    """
+    adds populated places to a figure
+
+    Parameters
+    ----------
+    ax : axes object
+        The axes where to draw the populated places
+    resolution : str
+        the resolution of the natural earth data to use
+
+    Returns
+    -------
+    ax : axes object
+        The axes where the data has been written
+
+    """
+    towns_filename = cartopy.io.shapereader.natural_earth(
+        category='cultural', name='populated_places', resolution=resolution)
+    reader = cartopy.io.shapereader.Reader(towns_filename)
+    latlon_town = [pt.coords[0] for pt in reader.geometries()]
+    lon_town, lat_town = zip(*latlon_town)
+    lon_town = np.array(lon_town)
+    lat_town = np.array(lat_town)
+    towns = np.array([town.attributes['NAME'] for town in reader.records()])
+
+    # keep only towns within map area
+    map_extent = ax.get_extent(crs=cartopy.crs.PlateCarree())
+
+    ind = np.where(np.logical_and(
+        np.logical_and(lon_town > map_extent[0],
+                       lon_town < map_extent[1]),
+        np.logical_and(lat_town > map_extent[2],
+                       lat_town < map_extent[3])))[0]
+
+    if ind.size == 0:
+        return ax
+
+    lon_town = lon_town[ind]
+    lat_town = lat_town[ind]
+    towns = towns[ind]
+
+    # draw town points
+    ax.scatter(
+        lon_town, lat_town, 25, marker='o', edgecolors='none',
+        transform=cartopy.crs.PlateCarree())
+    for i, town in enumerate(towns):
+        ax.annotate(
+            town, xy=(lon_town[i], lat_town[i]),
+            xycoords=cartopy.crs.PlateCarree()._as_mpl_transform(ax))
+
+    return ax

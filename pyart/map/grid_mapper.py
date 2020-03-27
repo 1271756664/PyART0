@@ -256,7 +256,7 @@ class NNLocator:
         """
         if self._algorithm == 'kd_tree':
             ind = self.tree.query_ball_point(q, r)
-            if len(ind) == 0:
+            if np.size(ind) == 0:
                 return ind, 0
             dist = scipy.spatial.minkowski_distance(q, self.tree.data[ind])
 
@@ -268,7 +268,7 @@ def map_to_grid(radars, grid_shape, grid_limits, grid_origin=None,
                 fields=None, gatefilters=False,
                 map_roi=True, weighting_function='Barnes', toa=17000.0,
                 copy_field_data=True, algorithm='kd_tree', leafsize=10.,
-                roi_func='dist_beam', constant_roi=500.,
+                roi_func='dist_beam', constant_roi=None,
                 z_factor=0.05, xy_factor=0.02, min_radius=500.0,
                 h_factor=1.0, nb=1.5, bsp=1.0, **kwargs):
     """
@@ -354,7 +354,9 @@ def map_to_grid(radars, grid_shape, grid_limits, grid_origin=None,
     constant_roi : float
         Radius of influence parameter for the built in 'constant' function.
         This parameter is the constant radius in meter for all grid points.
-        This parameter is only used when `roi_func` is `constant`.
+        This parameter is used when `roi_func` is `constant` or constant_roi
+        is not None. If constant_roi is not None, the constant roi_func is
+        used automatically.
     z_factor, xy_factor, min_radius : float
         Radius of influence parameters for the built in 'dist' function.
         The parameter correspond to the radius size increase, in meters,
@@ -421,7 +423,9 @@ def map_to_grid(radars, grid_shape, grid_limits, grid_origin=None,
     # check the parameters
     if weighting_function.upper() not in [
             'CRESSMAN', 'BARNES2', 'BARNES', 'NEAREST']:
-        raise ValueError('unknown weighting_function')
+        raise ValueError('unknown weighting_function ' +
+                         weighting_function.upper())
+
     if algorithm not in ['kd_tree']:
         raise ValueError('unknown algorithm: %s' % algorithm)
     badval = get_fillvalue()
@@ -518,6 +522,7 @@ def map_to_grid(radars, grid_shape, grid_limits, grid_origin=None,
         gate_locations[start:end, 0] = zg_loc.flat[:]
         gate_locations[start:end, 1] = yg_loc.flat[:]
         gate_locations[start:end, 2] = xg_loc.flat[:]
+
         del xg_loc, yg_loc
 
         # determine which gates should be included in the interpolation
@@ -529,7 +534,7 @@ def map_to_grid(radars, grid_shape, grid_limits, grid_origin=None,
                 gatefilter = moment_based_gate_filter(radar, **kwargs)
             gflags = np.logical_and(gflags, gatefilter.gate_included)
 
-        include_gate[start:end] = gflags.flat
+        include_gate[start:end] = gflags.ravel()
 
         if not copy_field_data:
             # record the number of gates from the current radar which
@@ -598,6 +603,10 @@ def map_to_grid(radars, grid_shape, grid_limits, grid_origin=None,
         x_step = (x_stop - x_start) / (nx - 1.)
 
     if not hasattr(roi_func, '__call__'):
+        if constant_roi is not None:
+            roi_func = 'constant'
+        else:
+            constant_roi = 500.0
         if roi_func == 'constant':
             roi_func = _gen_roi_func_constant(constant_roi)
         elif roi_func == 'dist':
@@ -630,7 +639,7 @@ def map_to_grid(radars, grid_shape, grid_limits, grid_origin=None,
         # find neighbors and distances
         ind, dist = nnlocator.find_neighbors_and_dists((z, y, x), r)
 
-        if len(ind) == 0:
+        if np.size(ind) == 0:
             # when there are no neighbors, mark the grid point as bad
             grid_data[iz, iy, ix] = np.ma.masked
             grid_data.data[iz, iy, ix] = badval

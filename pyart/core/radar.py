@@ -20,7 +20,6 @@ A general central radial scanning (or dwelling) instrument class.
 
 
 """
-from __future__ import print_function
 
 import copy
 import sys
@@ -767,8 +766,12 @@ class Radar(object):
         if 'data' not in dic:
             raise KeyError("dic must contain a 'data' key")
         if dic['data'].shape != (self.nrays, self.ngates):
-            t = (self.nrays, self.ngates)
-            err = "'data' has invalid shape, should be (%i, %i)" % t
+            t = (
+                self.nrays, self.ngates, dic['data'].shape[0],
+                dic['data'].shape[1])
+            err = (
+                "'data' has invalid shape, " +
+                "should be (%i, %i) but is (%i, %i)" % t)
             raise ValueError(err)
         # add the field
         self.fields[field_name] = dic
@@ -839,7 +842,9 @@ class Radar(object):
         # parse and verify parameters
         sweeps = np.array(sweeps, dtype='int32')
         if np.any(sweeps > (self.nsweeps - 1)):
-            raise ValueError('invalid sweeps indices in sweeps parameter')
+            raise ValueError('invalid sweeps indices in sweeps parameter. ' +
+                             'sweeps: '+' '.join(str(sweeps)) +
+                             ' nsweeps: '+str(self.nsweeps))
         if np.any(sweeps < 0):
             raise ValueError('only positive sweeps can be extracted')
 

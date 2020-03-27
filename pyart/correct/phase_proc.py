@@ -13,12 +13,16 @@ Adapted by Scott Collis and Scott Giangrande, refactored by Jonathan Helmus.
     :toctree: generated/
 
     det_sys_phase
-    _det_sys_phase
+    det_sys_phase_ray
+    correct_sys_phase
+    smooth_phidp_single_window
+    smooth_phidp_double_window
+    smooth_masked_scan
+    smooth_masked
     fzl_index
     det_process_range
     snr
     unwrap_masked
-    smooth_masked
     smooth_and_trim
     smooth_and_trim_scan
     noise
@@ -31,6 +35,9 @@ Adapted by Scott Collis and Scott Giangrande, refactored by Jonathan Helmus.
     LP_solver_cylp_mp
     LP_solver_cylp
     phase_proc_lp
+    _det_sys_phase
+    _det_sys_phase_ray
+    _correct_sys_phase
     phase_proc_lp_gf
     get_phidp_unf_gf
     det_sys_phase_gf
@@ -38,9 +45,7 @@ Adapted by Scott Collis and Scott Giangrande, refactored by Jonathan Helmus.
 
 """
 
-from __future__ import print_function, division
-
-import copy
+from copy import deepcopy
 from time import time
 
 import numpy as np
@@ -95,22 +100,405 @@ def det_sys_phase(radar, ncp_lev=0.4, rhohv_lev=0.6,
                           rhohv_lev)
 
 
-def _det_sys_phase(ncp, rhv, phidp, last_ray_idx, ncp_lev=0.4,
-                   rhv_lev=0.6):
-    """ Determine the system phase, see :py:func:`det_sys_phase`. """
-    good = False
-    phases = []
-    for radial in range(last_ray_idx + 1):
-        meteo = np.logical_and(ncp[radial, :] > ncp_lev,
-                               rhv[radial, :] > rhv_lev)
-        mpts = np.where(meteo)
-        if len(mpts[0]) > 25:
-            good = True
-            msmth_phidp = smooth_and_trim(phidp[radial, mpts[0]], 9)
-            phases.append(msmth_phidp[0:25].min())
-    if not good:
-        return None
-    return np.median(phases)
+def det_sys_phase_ray(radar, ind_rmin=10, ind_rmax=500, min_rcons=11,
+                      zmin=20., zmax=40., phidp_field=None, refl_field=None):
+    """
+    Public method
+    Alternative determination of the system phase.
+    Assumes that the valid gates of phidp are only precipitation.
+    A system phase value is found for each ray.
+
+    Parameters
+    ----------
+    radar : Radar
+        Radar object for which to determine the system phase.
+    ind_rmin, ind_rmax : int
+        Min and max range index where to look for continuous precipitation
+    min_rcons : int
+        The minimum number of consecutive gates to consider it a rain cell.
+    zmin, zmax : float
+        The minimum and maximum reflectivity to consider the radar bin
+        suitable precipitation
+    phidp_field : str
+        Field name within the radar object which represent the differential
+        phase shift. A value of None will use the default field name as
+        defined in the Py-ART configuration file.
+    refl_field : str
+        Field name within the radar object which represent the reflectivity.
+        A value of None will use the default field name as defined in the
+        Py-ART configuration file.
+
+    Returns
+    -------
+    phidp0_dict : dict
+        Estimate of the system phase at each ray and metadata
+    first_gates_dict : dict
+        The first gate where PhiDP is valid and metadata
+
+    """
+    # parse the field parameters
+    if phidp_field is None:
+        phidp_field = get_field_name('differential_phase')
+    if refl_field is None:
+        refl_field = get_field_name('reflectivity')
+
+    if phidp_field in radar.fields:
+        phidp = radar.fields[phidp_field]['data']
+    else:
+        raise KeyError('Field not available: ' + phidp_field)
+    if refl_field in radar.fields:
+        refl = radar.fields[refl_field]['data']
+    else:
+        raise KeyError('Field not available: ' + refl_field)
+
+    phidp0, first_gates = _det_sys_phase_ray(
+        phidp, refl, radar.nrays, radar.ngates, ind_rmin=ind_rmin,
+        ind_rmax=ind_rmax, min_rcons=min_rcons, zmin=zmin, zmax=zmax)
+
+    phidp0_dict = get_metadata('system_differential_phase')
+    phidp0_dict['data'] = phidp0
+
+    first_gates_dict = get_metadata('first_gate_differential_phase')
+    first_gates_dict['data'] = first_gates
+
+    return phidp0_dict, first_gates_dict
+
+
+def correct_sys_phase(radar, ind_rmin=10, ind_rmax=500, min_rcons=11,
+                      zmin=20., zmax=40., psidp_field=None, refl_field=None,
+                      phidp_field=None):
+    """
+    correction of the system offset. Public method
+
+    Parameters
+    ----------
+    radar : Radar
+        Radar object for which to determine the system phase.
+    ind_rmin, ind_rmax : int
+        Min and max range index where to look for continuous precipitation
+    min_rcons : int
+        The minimum number of consecutive gates to consider it a rain cell.
+    zmin, zmax : float
+        Minimum and maximum reflectivity to consider it a rain cell
+    psidp_field : str
+        Field name within the radar object which represent the differential
+        phase shift. A value of None will use the default field name as
+        defined in the Py-ART configuration file.
+    refl_field : str
+        Field name within the radar object which represent the reflectivity.
+        A value of None will use the default field name as defined in the
+        Py-ART configuration file.
+    phidp_field : str
+        Field name within the radar object which represent the corrected
+        differential phase shift. A value of None will use the default field
+        name as defined in the Py-ART configuration file.
+
+    Returns
+    -------
+    phidp_dict : dict
+        The corrected phidp field
+
+    """
+    # parse the field parameters
+    if psidp_field is None:
+        psidp_field = get_field_name('differential_phase')
+    if refl_field is None:
+        refl_field = get_field_name('reflectivity')
+    if phidp_field is None:
+        phidp_field = get_field_name('corrected_differential_phase')
+
+    if psidp_field in radar.fields:
+        psidp = radar.fields[psidp_field]['data']
+    else:
+        raise KeyError('Field not available: ' + psidp_field)
+    if refl_field in radar.fields:
+        refl = radar.fields[refl_field]['data']
+    else:
+        raise KeyError('Field not available: ' + refl_field)
+
+    # correct phidp of system offset
+    phidp = _correct_sys_phase(
+        psidp, refl, radar.nsweeps, radar.nrays, radar.ngates,
+        radar.sweep_start_ray_index['data'],
+        radar.sweep_end_ray_index['data'], ind_rmin=ind_rmin,
+        ind_rmax=ind_rmax, min_rcons=min_rcons, zmin=zmin, zmax=zmax)
+
+    # create specific differential phase field dictionary and store data
+    phidp_dict = get_metadata(phidp_field)
+    phidp_dict['data'] = phidp
+
+    return phidp_dict
+
+
+def smooth_phidp_single_window(
+        radar, ind_rmin=10, ind_rmax=500, min_rcons=11, zmin=20., zmax=40,
+        wind_len=11, min_valid=6, psidp_field=None, refl_field=None,
+        phidp_field=None):
+    """
+    correction of the system offset and smoothing using one window
+
+    Parameters
+    ----------
+    radar : Radar
+        Radar object for which to determine the system phase.
+    ind_rmin, ind_rmax : int
+        Min and max range index where to look for continuous precipitation
+    min_rcons : int
+        The minimum number of consecutive gates to consider it a rain cell.
+    zmin, zmax : float
+        Minimum and maximum reflectivity to consider it a rain cell
+    wind_len : int
+        Length of the moving window used to smooth
+    min_valid : int
+        Minimum number of valid bins to consider the smooth data valid
+    psidp_field : str
+        Field name within the radar object which represent the differential
+        phase shift. A value of None will use the default field name as
+        defined in the Py-ART configuration file.
+    refl_field : str
+        Field name within the radar object which represent the reflectivity.
+        A value of None will use the default field name as defined in the
+        Py-ART configuration file.
+    phidp_field : str
+        Field name within the radar object which represent the corrected
+        differential phase shift. A value of None will use the default field
+        name as defined in the Py-ART configuration file.
+
+    Returns
+    -------
+    phidp_dict : dict
+        The corrected phidp field
+
+    """
+    # parse the field parameters
+    if psidp_field is None:
+        psidp_field = get_field_name('differential_phase')
+    if refl_field is None:
+        refl_field = get_field_name('reflectivity')
+    if phidp_field is None:
+        phidp_field = get_field_name('corrected_differential_phase')
+
+    if psidp_field in radar.fields:
+        psidp = radar.fields[psidp_field]['data']
+    else:
+        raise KeyError('Field not available: ' + psidp_field)
+    if refl_field in radar.fields:
+        refl = radar.fields[refl_field]['data']
+    else:
+        raise KeyError('Field not available: ' + refl_field)
+
+    # correction of system offset
+    phidp = _correct_sys_phase(
+        psidp, refl, radar.nsweeps, radar.nrays, radar.ngates,
+        radar.sweep_start_ray_index['data'],
+        radar.sweep_end_ray_index['data'], ind_rmin=ind_rmin, zmin=zmin,
+        zmax=zmax, ind_rmax=ind_rmax, min_rcons=min_rcons)
+
+    phidp = smooth_masked_scan(phidp, wind_len=wind_len, min_valid=min_valid,
+                               wind_type='median')
+
+    # create specific differential phase field dictionary and store data
+    phidp_dict = get_metadata(phidp_field)
+    phidp_dict['data'] = phidp
+
+    return phidp_dict
+
+
+def smooth_phidp_double_window(
+        radar, ind_rmin=10, ind_rmax=500, min_rcons=11, zmin=20., zmax=40,
+        swind_len=11, smin_valid=6, lwind_len=31, lmin_valid=16, zthr=40.,
+        psidp_field=None, refl_field=None, phidp_field=None):
+    """
+    correction of the system offset and smoothing using two window
+
+    Parameters
+    ----------
+    radar : Radar
+        Radar object for which to determine the system phase.
+    ind_rmin, ind_rmax : int
+        Min and max range index where to look for continuous precipitation
+    min_rcons : int
+        The minimum number of consecutive gates to consider it a rain cell.
+    zmin, zmax : float
+        Minimum and maximum reflectivity to consider it a rain cell
+    swind_len : int
+        Length of the short moving window used to smooth
+    smin_valid : int
+        Minimum number of valid bins to consider the short window smooth data
+        valid
+    lwind_len : int
+        Length of the long moving window used to smooth
+    lmin_valid : int
+        Minimum number of valid bins to consider the long window smooth data
+        valid
+    zthr : float
+        reflectivity value above which the short window is used
+    psidp_field : str
+        Field name within the radar object which represent the differential
+        phase shift. A value of None will use the default field name as
+        defined in the Py-ART configuration file.
+    refl_field : str
+        Field name within the radar object which represent the reflectivity.
+        A value of None will use the default field name as defined in the
+        Py-ART configuration file.
+    phidp_field : str
+        Field name within the radar object which represent the corrected
+        differential phase shift. A value of None will use the default field
+        name as defined in the Py-ART configuration file.
+
+    Returns
+    -------
+    phidp_dict : dict
+        The corrected phidp field
+
+    """
+    # parse the field parameters
+    if psidp_field is None:
+        psidp_field = get_field_name('differential_phase')
+    if refl_field is None:
+        refl_field = get_field_name('reflectivity')
+    if phidp_field is None:
+        phidp_field = get_field_name('corrected_differential_phase')
+
+    if psidp_field in radar.fields:
+        psidp = radar.fields[psidp_field]['data']
+    else:
+        raise KeyError('Field not available: ' + psidp_field)
+    if refl_field in radar.fields:
+        refl = radar.fields[refl_field]['data']
+    else:
+        raise KeyError('Field not available: ' + refl_field)
+
+    # correction of system offset
+    phidp = _correct_sys_phase(
+        psidp, refl, radar.nsweeps, radar.nrays, radar.ngates,
+        radar.sweep_start_ray_index['data'],
+        radar.sweep_end_ray_index['data'], ind_rmin=ind_rmin, zmin=zmin,
+        zmax=zmax, ind_rmax=ind_rmax, min_rcons=min_rcons)
+
+    sphidp = smooth_masked_scan(phidp, wind_len=swind_len,
+                                min_valid=smin_valid, wind_type='median')
+    phidp = smooth_masked_scan(phidp, wind_len=lwind_len,
+                               min_valid=lmin_valid, wind_type='median')
+
+    # mix phidp
+    is_short = refl > zthr
+    phidp[is_short] = sphidp[is_short]
+
+    # create specific differential phase field dictionary and store data
+    phidp_dict = get_metadata(phidp_field)
+    phidp_dict['data'] = phidp
+
+    return phidp_dict
+
+
+def smooth_masked_scan(raw_data, wind_len=11, min_valid=6, wind_type='median'):
+    """
+    smoothes the data using a rolling window.
+    data with less than n valid points is masked.
+    Processess the entire scan at once
+
+    Parameters
+    ----------
+    raw_data : float masked array
+        The data to smooth.
+    window_len : float
+        Length of the moving window
+    min_valid : float
+        Minimum number of valid points for the smoothing to be valid
+    wind_type : str
+        type of window. Can be median or mean
+
+    Returns
+    -------
+    data_smooth : float masked array
+        smoothed data
+
+    """
+    valid_wind = ['median', 'mean']
+    if wind_type not in valid_wind:
+        raise ValueError(
+            "Window "+wind_type+" is none of " + ' '.join(valid_wind))
+
+    # we want an odd window
+    if wind_len % 2 == 0:
+        wind_len += 1
+    half_wind = int((wind_len-1)/2)
+
+    # initialize smoothed data
+    nrays, nbins = np.shape(raw_data)
+    data_smooth = np.ma.masked_all((nrays, nbins))
+
+    # check which gates are valid
+    valid = np.logical_not(np.ma.getmaskarray(raw_data))
+    valid_rolled = rolling_window(valid, wind_len)
+    nvalid = np.sum(valid_rolled, axis=-1, dtype=int)
+    ind_valid = np.logical_and(
+        nvalid >= min_valid, valid[:, half_wind:-half_wind]).nonzero()
+    del valid, valid_rolled, nvalid
+
+    # get rolling window and mask data
+    data_wind = rolling_window(raw_data, wind_len)
+    data_smooth[ind_valid[0], ind_valid[1]+half_wind] = eval(
+        'np.ma.'+wind_type +
+        '(data_wind, overwrite_input=True, axis=-1)')[ind_valid]
+
+    return data_smooth
+
+
+def smooth_masked(raw_data, wind_len=11, min_valid=6, wind_type='median'):
+    """
+    smoothes the data using a rolling window.
+    data with less than n valid points is masked.
+
+    Parameters
+    ----------
+    raw_data : float masked array
+        The data to smooth.
+    window_len : float
+        Length of the moving window
+    min_valid : float
+        Minimum number of valid points for the smoothing to be valid
+    wind_type : str
+        type of window. Can be median or mean
+
+    Returns
+    -------
+    data_smooth : float masked array
+        smoothed data
+
+    """
+    valid_wind = ['median', 'mean']
+    if wind_type not in valid_wind:
+        raise ValueError(
+            "Window "+wind_type+" is none of " + ' '.join(valid_wind))
+
+    # we want an odd window
+    if wind_len % 2 == 0:
+        wind_len += 1
+    half_wind = int((wind_len-1)/2)
+
+    # initialize smoothed data
+    nrays, nbins = np.shape(raw_data)
+    data_smooth = np.ma.masked_all((nrays, nbins))
+
+    mask = np.ma.getmaskarray(raw_data)
+    valid = np.logical_not(mask)
+
+    mask_wind = rolling_window(mask, wind_len)
+    valid_wind = np.logical_not(mask_wind).astype(int)
+    nvalid = np.sum(valid_wind, -1)
+
+    data_wind = rolling_window(raw_data, wind_len)
+
+    # check which gates are valid
+    ind_valid = np.logical_and(
+        nvalid >= min_valid, valid[:, half_wind:-half_wind]).nonzero()
+
+    data_smooth[ind_valid[0], ind_valid[1]+half_wind] = (
+        eval('np.ma.'+wind_type+'(data_wind, axis=-1)')[ind_valid])
+
+    return data_smooth
 
 
 def fzl_index(fzl, ranges, elevation, radar_height):
@@ -131,7 +519,8 @@ def fzl_index(fzl, ranges, elevation, radar_height):
     Returns
     -------
     idx : int
-        Index of last gate which has an altitude below `fzl`.
+        Index of last gate which has an altitude below `fzl`. -1 if
+        all data is above the freezing level
 
     Notes
     -----
@@ -175,6 +564,7 @@ def det_process_range(radar, sweep, fzl, doc=10):
     -------
     gate_end : int
         Index of last gate below `fzl` and satisfying the `doc` parameter.
+        -1 if the entire volume is above the freezing level
     ray_start : int
         Ray index which defines the start of the region.
     ray_end : int
@@ -186,7 +576,8 @@ def det_process_range(radar, sweep, fzl, doc=10):
     elevation = radar.fixed_angle['data'][sweep]
     radar_height = radar.altitude['data']
     gate_end = fzl_index(fzl, ranges, elevation, radar_height)
-    gate_end = min(gate_end, len(ranges) - doc)
+    if gate_end >= 0:
+        gate_end = min(gate_end, len(ranges) - doc)
 
     ray_start = radar.sweep_start_ray_index['data'][sweep]
     ray_end = radar.sweep_end_ray_index['data'][sweep] + 1
@@ -198,63 +589,6 @@ def snr(line, wl=11):
     signal = smooth_and_trim(line, window_len=wl)
     _noise = smooth_and_trim(np.sqrt((line - signal) ** 2), window_len=wl)
     return abs(signal) / _noise
-
-
-def smooth_masked(raw_data, wind_len=11, min_valid=6, wind_type='median'):
-    """
-    Smoothes the data using a rolling window.
-    data with less than n valid points is masked.
-
-    Parameters
-    ----------
-    raw_data : float masked array
-        The data to smooth.
-    win_len : float
-        Length of the moving window.
-    min_valid : float
-        Minimum number of valid points for the smoothing to be valid.
-    wind_type : str
-        Type of window. Can be median or mean.
-
-    Returns
-    -------
-    data_smooth : float masked array
-        Smoothed data.
-
-    """
-    valid_wind = ['median', 'mean']
-    if wind_type not in valid_wind:
-        raise ValueError(
-            "Window " + win_type + " is none of " + ' '.join(valid_wind))
-
-    # we want an odd window
-    if wind_len % 2 == 0:
-        wind_len += 1
-    half_wind = int((wind_len-1)/2)
-
-    # initialize smoothed data
-    nrays, nbins = np.shape(raw_data)
-    data_smooth = np.ma.zeros((nrays, nbins))
-    data_smooth[:] = np.ma.masked
-    data_smooth.set_fill_value(get_fillvalue())
-
-    mask = np.ma.getmaskarray(raw_data)
-    valid = np.logical_not(mask)
-
-    mask_wind = rolling_window(mask, wind_len)
-    valid_wind = np.logical_not(mask_wind).astype(int)
-    nvalid = np.sum(valid_wind, -1)
-
-    data_wind = rolling_window(raw_data, wind_len)
-
-    # check which gates are valid
-    ind_valid = np.logical_and(
-        nvalid >= min_valid, valid[:, half_wind:-half_wind]).nonzero()
-
-    data_smooth[ind_valid[0], ind_valid[1]+half_wind] = (
-        eval('np.ma.' + wind_type + '(data_wind, axis=-1)')[ind_valid])
-
-    return data_smooth
 
 
 def unwrap_masked(lon, centered=False, copy=True):
@@ -303,8 +637,8 @@ def unwrap_masked(lon, centered=False, copy=True):
     if masked_input:
         lon.fill_value = fill_value
         return lon
-    else:
-        return lon.filled(np.nan)
+
+    return lon.filled(np.nan)
 
 
 # this function adapted from the Scipy Cookbook:
@@ -326,8 +660,8 @@ def smooth_and_trim(x, window_len=11, window='hanning'):
         The dimension of the smoothing window; should be an odd integer.
     window : str
         The type of window from 'flat', 'hanning', 'hamming', 'bartlett',
-        'blackman' or 'sg_smooth'. A flat window will produce a moving
-        average smoothing.
+        'blackman', 'median' or 'sg_smooth'. A flat window will produce a
+        moving average smoothing.
 
     Returns
     -------
@@ -335,6 +669,8 @@ def smooth_and_trim(x, window_len=11, window='hanning'):
         The smoothed signal with length equal to the input signal.
 
     """
+    from scipy.signal import medfilt
+
     if x.ndim != 1:
         raise ValueError("smooth only accepts 1 dimension arrays.")
     if x.size < window_len:
@@ -342,20 +678,26 @@ def smooth_and_trim(x, window_len=11, window='hanning'):
     if window_len < 3:
         return x
     valid_windows = ['flat', 'hanning', 'hamming', 'bartlett', 'blackman',
-                     'sg_smooth']
+                     'sg_smooth', 'median']
     if window not in valid_windows:
-        raise ValueError("Window is on of " + ' '.join(valid_windows))
+        raise ValueError(
+            "Window "+window+" is none of " + ' '.join(valid_windows))
 
     s = np.r_[x[window_len - 1:0:-1], x, x[-1:-window_len:-1]]
 
-    if window == 'flat':  # moving average
-        w = np.ones(int(window_len), 'd')
-    elif window == 'sg_smooth':
-        w = np.array([0.1, .25, .3, .25, .1])
+    if window == 'median':
+        if window_len % 2 == 0:
+            window_len += 1
+        y = medfilt(s, kernel_size=[window_len])
     else:
-        w = eval('np.' + window + '(window_len)')
+        if window == 'flat':  # moving average
+            w = np.ones(int(window_len), 'd')
+        elif window == 'sg_smooth':
+            w = np.array([0.1, .25, .3, .25, .1])
+        else:
+            w = eval('np.' + window + '(window_len)')
 
-    y = np.convolve(w / w.sum(), s, mode='valid')
+        y = np.convolve(w / w.sum(), s, mode='valid')
 
     return y[int(window_len / 2):len(x) + int(window_len / 2)]
 
@@ -378,8 +720,8 @@ def smooth_and_trim_scan(x, window_len=11, window='hanning'):
         The dimension of the smoothing window; should be an odd integer.
     window : str, optional
         The type of window from 'flat', 'hanning', 'hamming', 'bartlett',
-        'blackman' or 'sg_smooth'. A flat window will produce a moving
-        average smoothing.
+        'blackman', 'median' or 'sg_smooth'. A flat window will produce a
+        moving average smoothing.
 
     Returns
     -------
@@ -388,6 +730,7 @@ def smooth_and_trim_scan(x, window_len=11, window='hanning'):
 
     """
     from scipy.ndimage.filters import convolve1d
+    from scipy.signal import medfilt2d
 
     if x.ndim != 2:
         raise ValueError("smooth only accepts 2 dimension arrays.")
@@ -397,18 +740,24 @@ def smooth_and_trim_scan(x, window_len=11, window='hanning'):
     if window_len < 3:
         return x
     valid_windows = ['flat', 'hanning', 'hamming', 'bartlett', 'blackman',
-                     'sg_smooth']
+                     'sg_smooth', 'median']
     if window not in valid_windows:
-        raise ValueError("Window is on of " + ' '.join(valid_windows))
+        raise ValueError(
+            "Window "+window+" is none of " + ' '.join(valid_windows))
 
-    if window == 'flat':  # moving average
-        w = np.ones(int(window_len), 'd')
-    elif window == 'sg_smooth':
-        w = np.array([0.1, .25, .3, .25, .1])
+    if window == 'median':
+        if window_len % 2 == 0:
+            window_len += 1
+        y = medfilt2d(x, kernel_size=[1, window_len])
     else:
-        w = eval('np.' + window + '(window_len)')
+        if window == 'flat':  # moving average
+            w = np.ones(int(window_len), 'd')
+        elif window == 'sg_smooth':
+            w = np.array([0.1, .25, .3, .25, .1])
+        else:
+            w = eval('np.' + window + '(window_len)')
 
-    y = convolve1d(x, w / w.sum(), axis=1)
+        y = convolve1d(x, w / w.sum(), axis=1)
 
     return y
 
@@ -523,7 +872,7 @@ def get_phidp_unf(radar, ncp_lev=0.4, rhohv_lev=0.6, debug=False, ncpts=20,
         if 'nowrap' is not None:
             # Start the unfolding a bit later in order to avoid false
             # jumps based on clutter
-            unwrapped = copy.deepcopy(x_ma)
+            unwrapped = deepcopy(x_ma)
             end_unwrap = unwrap_masked(x_ma[nowrap::], centered=False)
             unwrapped[nowrap::] = end_unwrap
         else:
@@ -707,6 +1056,9 @@ def LP_solver_cvxopt(A_Matrix, B_vectors, weights, solver='glpk'):
         # XXX when a solution is not found sol is None, need to check and
         # deal with this...
 
+        if sol['x'] is None:
+            continue
+
         # extract the solution
         this_soln = np.zeros(n_gates)
         for i in range(n_gates):
@@ -819,7 +1171,6 @@ def solve_cylp(model, B_vectors, weights, ray, chunksize):
     from cylp.py.modeling.CyLPModel import CyLPModel, CyLPArray
 
     n_gates = weights.shape[1] // 2
-    n_rays = B_vectors.shape[0]
     soln = np.zeros([chunksize, n_gates])
 
     # import LP model in solver
@@ -1101,7 +1452,7 @@ def phase_proc_lp(radar, offset, debug=False, self_const=60000.0,
         unf_field = get_field_name('unfolded_differential_phase')
 
     # prepare reflectivity field
-    refl = copy.deepcopy(radar.fields[refl_field]['data']) + offset
+    refl = deepcopy(radar.fields[refl_field]['data']) + offset
     is_low_z = (refl) < low_z
     is_high_z = (refl) > high_z
     refl[np.where(is_high_z)] = high_z
@@ -1117,17 +1468,17 @@ def phase_proc_lp(radar, offset, debug=False, self_const=60000.0,
                            overide_sys_phase=overide_sys_phase,
                            refl_field=refl_field, ncp_field=ncp_field,
                            rhv_field=rhv_field, phidp_field=phidp_field)
-    my_new_ph = copy.deepcopy(radar.fields[phidp_field])
+    my_new_ph = deepcopy(radar.fields[phidp_field])
     my_unf[:, -1] = my_unf[:, -2]
     my_new_ph['data'] = my_unf
     radar.fields.update({unf_field: my_new_ph})
 
-    phidp_mod = copy.deepcopy(radar.fields[unf_field]['data'])
+    phidp_mod = deepcopy(radar.fields[unf_field]['data'])
     phidp_neg = phidp_mod < min_phidp
     phidp_mod[np.where(phidp_neg)] = min_phidp
 
     # process
-    proc_ph = copy.deepcopy(radar.fields[phidp_field])
+    proc_ph = deepcopy(radar.fields[phidp_field])
     proc_ph['data'] = phidp_mod
     St_Gorlv_differential_5pts = [-.2, -.1, 0, .1, .2]
     for sweep in range(len(radar.sweep_start_ray_index['data'])):
@@ -1136,6 +1487,9 @@ def phase_proc_lp(radar, offset, debug=False, self_const=60000.0,
         end_gate, start_ray, end_ray = det_process_range(
             radar, sweep, fzl, doc=15)
         start_gate = 0
+
+        if end_gate < 0:
+            continue
 
         A_Matrix = construct_A_matrix(
             len(radar.range['data'][start_gate:end_gate]),
@@ -1185,7 +1539,7 @@ def phase_proc_lp(radar, offset, debug=False, self_const=60000.0,
 
     # copy the KDP metadata from existing field or create anew
     if kdp_field in radar.fields:
-        sob_kdp = copy.deepcopy(radar.fields[kdp_field])
+        sob_kdp = deepcopy(radar.fields[kdp_field])
     else:
         sob_kdp = get_metadata(kdp_field)
 
@@ -1193,6 +1547,180 @@ def phase_proc_lp(radar, offset, debug=False, self_const=60000.0,
     sob_kdp['_FillValue'] = get_fillvalue()
 
     return proc_ph, sob_kdp
+
+
+def _det_sys_phase(ncp, rhv, phidp, last_ray_idx, ncp_lev=0.4,
+                   rhv_lev=0.6):
+    """ Determine the system phase, see :py:func:`det_sys_phase`. """
+    good = False
+    phases = []
+    for radial in range(last_ray_idx + 1):
+        meteo = np.logical_and(ncp[radial, :] > ncp_lev,
+                               rhv[radial, :] > rhv_lev)
+        mpts = np.where(meteo)
+        if len(mpts[0]) > 25:
+            good = True
+            msmth_phidp = smooth_and_trim(phidp[radial, mpts[0]], 9)
+            phases.append(msmth_phidp[0:25].min())
+    if not good:
+        return None
+    return np.median(phases)
+
+
+def _det_sys_phase_ray(phidp, refl, nrays, ngates, ind_rmin=10, ind_rmax=500,
+                       min_rcons=11, zmin=20., zmax=40.):
+    """
+    Private method
+    Alternative determination of the system phase.
+    Assumes that the valid gates of phidp are only precipitation.
+    A system phase value is found for each ray.
+
+    Parameters
+    ----------
+    phidp : masked array
+        the phidp data
+    refl : masked array
+        the reflectivity data
+    nrays : int
+        number of rays in phidp
+    ngates : int
+        number of gates per ray
+    ind_rmin, ind_rmax : int
+        Min and max range index where to look for continuous precipitation
+    min_rcons : int
+        The minimum number of consecutive gates to consider it a rain cell.
+    zmin, zmax : float
+
+    Returns
+    -------
+    phidp0 : array of floats
+        Estimate of the system phase at each ray
+    first_gates : array of ints
+        The first gate where PhiDP is valid
+
+    """
+    # initialize output
+    phidp0 = np.ma.zeros((nrays, ngates), dtype='float64')
+    phidp0[:] = np.ma.masked
+    first_gates = np.zeros((nrays, ngates), dtype=int)-1
+
+    # select data to analyse
+    phidp_aux = np.ma.masked_where(
+        np.logical_or(refl < zmin, refl > zmax), phidp)
+    phidp_aux = phidp_aux[:, ind_rmin:ind_rmax]
+
+    deg2rad = np.pi/180.
+    # we want an odd window
+    if min_rcons % 2 == 0:
+        min_rcons += 1
+    half_rcons = int((min_rcons-1)/2)
+    for ray in range(nrays):
+        # split ray in consecutive valid range bins
+        isprec = np.ma.getmaskarray(phidp_aux[ray, :]) == 0
+        ind_prec = np.where(isprec)[0]
+        cons_list = np.split(ind_prec, np.where(np.diff(ind_prec) != 1)[0]+1)
+
+        # check if there is a cell long enough
+        found_cell = False
+        for ind_prec_cell in cons_list:
+            if len(ind_prec_cell) >= min_rcons:
+                found_cell = True
+                ind_prec_cell = ind_prec_cell[0:min_rcons-1]
+                break
+        # compute phidp0 as the average in sine and cosine
+        if found_cell:
+            first_gates[ray, :] = ind_prec_cell[0]+half_rcons+ind_rmin
+            phidp0[ray, :] = np.arctan2(
+                np.sum(np.sin(phidp_aux[ray, ind_prec_cell]*deg2rad)),
+                np.sum(np.cos(phidp_aux[ray, ind_prec_cell]*deg2rad)))/deg2rad
+
+    return phidp0, first_gates
+
+
+def _correct_sys_phase(phidp, refl, nsweeps, nrays, ngates, start_sweep,
+                       end_sweep, ind_rmin=10, ind_rmax=500, min_rcons=11,
+                       zmin=20., zmax=40.):
+    """
+    correction of the system offset. Private method
+
+    Parameters
+    ----------
+    phidp : masked array
+        the phidp field to correct
+    refl : masked array
+        the reflectivity field
+    nsweeps, nrays, ngates : int
+        number of sweeps, total rays and gates per ray
+    start_sweep, end_sweep : int array
+        index of the starting and ending ray of each sweep
+    ind_rmin, ind_rmax : int
+        the minimum and maximum range indexes to use in the estimation
+    min_rcons : int
+        the number of consecutive range bins to consider a precipitation cell
+        valid
+
+    Returns
+    -------
+    corr_phidp : masked array
+        The corrected phidp field
+
+    """
+    mask = np.ma.getmaskarray(phidp)
+
+    # estimate system phase at each ray
+    phidp0, first_gates = _det_sys_phase_ray(
+        phidp, refl, nrays, ngates, ind_rmin=ind_rmin,
+        ind_rmax=ind_rmax, min_rcons=min_rcons, zmin=zmin, zmax=zmax)
+
+    # check if there are invalid Phidp0
+    mask_phidp0 = np.ma.getmaskarray(phidp0[:, 0])
+    ind_invalid = np.where(mask_phidp0)
+    ninvalid = np.size(ind_invalid)
+
+    # if there are gaps in the data we can
+    # extract information from the neighbours
+    if ninvalid > 0:
+        for sweep in range(nsweeps):
+            # check if there are gaps in the sweep
+            start = start_sweep[sweep]
+            end = end_sweep[sweep]
+
+            ind_invalid_sweep = np.where(mask_phidp0[start:end])+start
+            ninvalid_sweep = np.size(ind_invalid_sweep)
+            if ninvalid_sweep > 0:
+                # check if there are valid estimations in sweep
+                ind_valid_sweep = (
+                    np.where(mask_phidp0[start:end] == 0) + start)
+                nvalid_sweep = np.size(ind_valid_sweep)
+
+                if nvalid_sweep > 0:
+                    # if there are valid estimations compute the median
+                    phidp0[ind_invalid_sweep, :] = np.median(
+                        phidp0[ind_valid_sweep, 0])
+                    first_gates[ind_invalid_sweep, :] = ind_rmin
+                else:
+                    # if not compute the median of the valid phidp.
+                    # if the median is valid set phidp0 to the median.
+                    # Otherwise set to 0
+                    phidp_median = np.ma.asarray(np.ma.median(
+                        phidp[start:end, :]))
+                    if phidp_median.mask is False:
+                        phidp0[ind_invalid_sweep, :] = phidp_median
+                        first_gates[ind_invalid_sweep] = ind_rmin
+                    else:
+                        phidp0[ind_invalid_sweep, :] = 0.
+                        first_gates[ind_invalid_sweep] = ind_rmin
+
+    # correct phidp of system offset
+    corr_phidp = deepcopy(phidp)
+    corr_phidp = phidp-phidp0
+
+    for ray in range(nrays):
+        corr_phidp[ray, 0:first_gates[ray, 0]] = 0.
+
+    corr_phidp = np.ma.masked_where(mask, corr_phidp)
+
+    return corr_phidp
 
 
 def phase_proc_lp_gf(radar, gatefilter=None, debug=False, self_const=60000.0,
@@ -1289,7 +1817,7 @@ def phase_proc_lp_gf(radar, gatefilter=None, debug=False, self_const=60000.0,
         gatefilter.include_all()
 
     # prepare reflectivity field
-    refl = copy.deepcopy(radar.fields[refl_field]['data']) + offset
+    refl = deepcopy(radar.fields[refl_field]['data']) + offset
     is_low_z = (refl) < low_z
     is_high_z = (refl) > high_z
     refl[np.where(is_high_z)] = high_z
@@ -1462,7 +1990,7 @@ def get_phidp_unf_gf(radar, gatefilter, debug=False, ncpts=2, sys_phase=None,
         if 'nowrap' is not None:
             # Start the unfolding a bit later in order to avoid false
             # jumps based on clutter
-            unwrapped = copy.deepcopy(x_ma)
+            unwrapped = deepcopy(x_ma)
             end_unwrap = unwrap_masked(x_ma[nowrap::], centered=False)
             unwrapped[nowrap::] = end_unwrap
         else:

@@ -10,6 +10,10 @@ corrections routines in Py-ART.
 
     moment_based_gate_filter
     moment_and_texture_based_gate_filter
+    birds_gate_filter
+    snr_based_gate_filter
+    class_based_gate_filter
+    visibility_based_gate_filter
     temp_based_gate_filter
     iso0_based_gate_filter
 
@@ -125,7 +129,6 @@ def moment_and_texture_based_gate_filter(
     Create a filter which removes undesired gates based on texture of moments.
 
     Creates a gate filter in which the following gates are excluded:
-
     * Gates where the instrument is transitioning between sweeps.
     * Gates where RhoHV is below min_rhv
     * Gates where the PhiDP texture is above max_textphi.
@@ -133,7 +136,7 @@ def moment_and_texture_based_gate_filter(
     * Gates where the ZDR texture is above max_textzdr
     * Gates where the reflectivity texture is above max_textrefl
     * If any of the thresholds is not set or the field (RhoHV, ZDR, PhiDP,
-      reflectivity) do not exist in the radar the filter is not applied.
+    reflectivity) do not exist in the radar the filter is not applied.
 
     Parameters
     ----------
@@ -219,8 +222,8 @@ def moment_and_texture_based_gate_filter(
         radar_aux.add_field(textzdr_field, tzdr)
 
     if (max_textrefl is not None) and (refl_field in radar_aux.fields):
-        textrefl = texture_along_ray(
-            radar_aux, refl_field, wind_size=wind_size)
+        textrefl = texture_along_ray(radar_aux, refl_field,
+                                     wind_size=wind_size)
         trefl = get_metadata(textrefl_field)
         trefl['data'] = textrefl
         radar_aux.add_field(textrefl_field, trefl)
@@ -248,6 +251,267 @@ def moment_and_texture_based_gate_filter(
         gatefilter.exclude_above(textrefl_field, max_textrefl)
         gatefilter.exclude_masked(textrefl_field)
         gatefilter.exclude_invalid(textrefl_field)
+    return gatefilter
+
+
+def birds_gate_filter(
+        radar, zdr_field=None, rhv_field=None, refl_field=None,
+        vel_field=None, max_zdr=3., max_rhv=0.9, min_refl=0., max_refl=20.,
+        vel_lim=1., rmin=2000., rmax=25000., elmin=1., elmax=85.):
+    """
+    Create a filter which removes data not suspected of being birds
+
+    Creates a gate filter in which the following gates are excluded:
+
+    * Gates where the instrument is transitioning between sweeps.
+    * Gates where the reflectivity is beyond min_refl and max_refl
+    * Gates where the co-polar correlation coefficient is above max_rhv
+    * Gates where the differential reflectivity is above max_zdr
+    * Gates where the Doppler velocity is within the interval given by
+      +-vel_lim
+    * Gates where any of the above fields are masked or contain
+      invalid values (NaNs or infs).
+    * Gates outside the range given by range min and range max
+    * If any of these three fields do not exist in the radar that fields filter
+      criteria is not applied.
+
+    Parameters
+    ----------
+    radar : Radar
+        Radar object from which the gate filter will be built.
+    refl_field, zdr_field, rhv_field, vel_field : str
+        Names of the radar fields which contain the reflectivity, differential
+        reflectivity, co-polar correlation coefficient, and Doppler velocity
+        from which the gate filter will be created using the above criteria. A
+        value of None for any of these parameters will use the default field
+        name as defined in the Py-ART configuration file.
+    max_zdr, max_rhv : float
+        Maximum values for the differential reflectivity and co-polar
+        correlation coefficient. Gates in these fields above these limits as
+        well as gates which are masked or contain invalid values will be
+        excluded and not used in calculation which use the filter.
+        A value of None will disable filtering based upon the given field
+        including removing masked or gates with an invalid value.
+        To disable the thresholding but retain the masked and invalid filter
+        set the parameter to a value above the highest value in the field.
+    min_refl, max_refl : float
+        Minimum and maximum values for the reflectivity.  Gates outside
+        of this interval as well as gates which are masked or contain invalid
+        values will be excluded and not used in calculation which use this
+        filter. A value or None for one of these parameters will disable the
+        minimum or maximum filtering but retain the other.  A value of None
+        for both of these values will disable all filtering based upon the
+        reflectivity including removing masked or gates with an invalid value.
+        To disable the interval filtering but retain the masked and invalid
+        filter set the parameters to values above and below the lowest and
+        greatest values in the reflectivity field.
+    rmin, rmax : float
+        Minimum and maximum ranges [m]
+    elmin, elmax : float
+        Minimum and maximum elevations [deg]
+
+    Returns
+    -------
+    gatefilter : :py:class:`GateFilter`
+        A gate filter based upon the described criteria.  This can be
+        used as a gatefilter parameter to various functions in pyart.correct.
+
+    """
+    # parse the field parameters
+    if refl_field is None:
+        refl_field = get_field_name('reflectivity')
+    if zdr_field is None:
+        zdr_field = get_field_name('differential_reflectivity')
+    if rhv_field is None:
+        rhv_field = get_field_name('cross_correlation_ratio')
+    if vel_field is None:
+        vel_field = get_field_name('velocity')
+
+    # filter gates based upon field parameters
+    gatefilter = GateFilter(radar)
+    gatefilter.exclude_transition()
+    if (max_zdr is not None) and (zdr_field in radar.fields):
+        gatefilter.exclude_above(zdr_field, max_zdr)
+        gatefilter.exclude_masked(zdr_field)
+        gatefilter.exclude_invalid(zdr_field)
+    if (max_rhv is not None) and (rhv_field in radar.fields):
+        gatefilter.exclude_above(rhv_field, max_rhv)
+        gatefilter.exclude_masked(rhv_field)
+        gatefilter.exclude_invalid(rhv_field)
+    if refl_field in radar.fields:
+        if min_refl is not None:
+            gatefilter.exclude_below(refl_field, min_refl)
+            gatefilter.exclude_masked(refl_field)
+            gatefilter.exclude_invalid(refl_field)
+        if max_refl is not None:
+            gatefilter.exclude_above(refl_field, max_refl)
+            gatefilter.exclude_masked(refl_field)
+            gatefilter.exclude_invalid(refl_field)
+    if (vel_lim is not None) and (vel_field in radar.fields):
+        gatefilter.exclude_inside(vel_field, -vel_lim, vel_lim)
+        gatefilter.exclude_masked(vel_field)
+        gatefilter.exclude_invalid(vel_field)
+    if rmin is not None or rmax is not None:
+        mask = np.zeros((radar.nrays, radar.ngates), dtype='bool')
+        if rmin is not None:
+            ind = np.where(radar.range['data'] < rmin)[0]
+            if ind.size > 0:
+                mask[:, 0:ind[-1]+1] = True
+        if rmax is not None:
+            ind = np.where(radar.range['data'] > rmax)[0]
+            if ind.size > 0:
+                mask[:, ind[0]:] = True
+        gatefilter.exclude_gates(mask, exclude_masked=True, op='or')
+    if elmin is not None or elmax is not None:
+        mask = np.zeros((radar.nrays, radar.ngates), dtype='bool')
+        if elmin is not None:
+            ind = np.where(radar.elevation['data'] < elmin)[0]
+            if ind.size > 0:
+                mask[0:ind[-1]+1, :] = True
+        if elmax is not None:
+            ind = np.where(radar.elevation['data'] > elmax)[0]
+            if ind.size > 0:
+                mask[ind[0]:, :] = True
+        gatefilter.exclude_gates(mask, exclude_masked=True, op='or')
+
+    return gatefilter
+
+
+def snr_based_gate_filter(radar, snr_field=None, min_snr=10., max_snr=None):
+    """
+    Create a filter which removes undesired gates based on SNR.
+
+    Parameters
+    ----------
+    radar : Radar
+        Radar object from which the gate filter will be built.
+    snr_field : str
+        Name of the radar field which contains the signal to noise ratio.
+        A value of None for will use the default field name as defined in
+        the Py-ART configuration file.
+    min_snr : float
+        Minimum value for the SNR. Gates below this limits as well as gates
+        which are masked or contain invalid values will be excluded and not
+        used in calculation which use the filter. A value of None will disable
+        filtering based upon the field including removing masked or
+        gates with an invalid value. To disable the thresholding but retain
+        the masked and invalid filter set the parameter to a value below the
+        lowest value in the field.
+    max_snr : float
+        Maximum value for the SNR
+
+    Returns
+    -------
+    gatefilter : :py:class:`GateFilter`
+        A gate filter based upon the described criteria.  This can be
+        used as a gatefilter parameter to various functions in pyart.correct.
+
+    """
+    # parse the field parameters
+    if snr_field is None:
+        snr_field = get_field_name('signal_to_noise_ratio')
+
+    # make deepcopy of input radar (we do not want to modify the original)
+    radar_aux = deepcopy(radar)
+
+    # filter gates based upon field parameters
+    gatefilter = GateFilter(radar_aux)
+
+    if ((min_snr is not None or max_snr is not None) and
+            (snr_field in radar_aux.fields)):
+        gatefilter.exclude_masked(snr_field)
+        gatefilter.exclude_invalid(snr_field)
+        if min_snr is not None:
+            gatefilter.exclude_below(snr_field, min_snr)
+        if max_snr is not None:
+            gatefilter.exclude_above(snr_field, max_snr)
+    return gatefilter
+
+
+def class_based_gate_filter(radar, field=None, kept_values=None):
+    """
+    Create a filter which removes undesired gates based on class values
+
+    Parameters
+    ----------
+    radar : Radar
+        Radar object from which the gate filter will be built.
+    field : str
+        Name of the radar field which contains the classification.
+        A value of None for will use the default field name for the
+        hydrometeor classification as defined in the Py-ART configuration
+        file.
+    kept_values : list of ints or none
+        The class values to keep
+
+    Returns
+    -------
+    gatefilter : :py:class:`GateFilter`
+        A gate filter based upon the described criteria.  This can be
+        used as a gatefilter parameter to various functions in pyart.correct.
+
+    """
+    # parse the field parameters
+    if field is None:
+        field = get_field_name('radar_echo_classification')
+
+    # make deepcopy of input radar (we do not want to modify the original)
+    radar_aux = deepcopy(radar)
+
+    # filter gates based upon field parameters
+    gatefilter = GateFilter(radar_aux)
+
+    if (kept_values is not None) and (field in radar_aux.fields):
+        gatefilter.exclude_masked(field)
+        gatefilter.exclude_invalid(field)
+        for value in kept_values:
+            gatefilter.include_equal(field, value)
+
+    return gatefilter
+
+
+def visibility_based_gate_filter(radar, vis_field=None, min_vis=10.):
+    """
+    Create a filter which removes undesired gates based on visibility.
+
+    Parameters
+    ----------
+    radar : Radar
+        Radar object from which the gate filter will be built.
+    vis_field : str
+        Name of the radar field which contains the visibility.
+        A value of None for will use the default field name as defined in
+        the Py-ART configuration file.
+    min_vis : float
+        Minimum value for the visibility. Gates below this limits as well as
+        gates which are masked or contain invalid values will be excluded and
+        not used in calculation which use the filter. A value of None will
+        disable filtering based upon the field including removing masked or
+        gates with an invalid value. To disable the thresholding but retain
+        the masked and invalid filter set the parameter to a value below the
+        lowest value in the field.
+
+    Returns
+    -------
+    gatefilter : :py:class:`GateFilter`
+        A gate filter based upon the described criteria.  This can be
+        used as a gatefilter parameter to various functions in pyart.correct.
+
+    """
+    # parse the field parameters
+    if vis_field is None:
+        vis_field = get_field_name('visibility')
+
+    # make deepcopy of input radar (we do not want to modify the original)
+    radar_aux = deepcopy(radar)
+
+    # filter gates based upon field parameters
+    gatefilter = GateFilter(radar_aux)
+
+    if (min_vis is not None) and (vis_field in radar_aux.fields):
+        gatefilter.exclude_below(vis_field, min_vis)
+        gatefilter.exclude_masked(vis_field)
+        gatefilter.exclude_invalid(vis_field)
     return gatefilter
 
 
@@ -509,10 +773,12 @@ class GateFilter(object):
 
     @property
     def gate_included(self):
+        """ Return a copy of the included gates. """
         return ~self._gate_excluded.copy()
 
     @property
     def gate_excluded(self):
+        """ Return a copy of the excluded gates. """
         return self._gate_excluded.copy()
 
     def _get_fdata(self, field):
@@ -539,7 +805,6 @@ class GateFilter(object):
             self._gate_excluded = marked
         else:
             raise ValueError("invalid 'op' parameter: ", op)
-        return
 
     ###################
     # exclude methods #
@@ -672,12 +937,10 @@ class GateFilter(object):
     def exclude_all(self):
         """ Exclude all gates. """
         self._gate_excluded = np.ones_like(self._gate_excluded)
-        return
 
     def exclude_none(self):
         """ Exclude no gates, include all gates. """
         self._gate_excluded = np.zeros_like(self._gate_excluded)
-        return
 
     def exclude_masked(self, field, exclude_masked=True, op='or'):
         """ Exclude gates where a given field is masked. """

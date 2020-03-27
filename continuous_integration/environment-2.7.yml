@@ -4,6 +4,7 @@ channels:
   - defaults
 dependencies:
   - python=2.7
+  - gdal
   - numpy
   - scipy
   - matplotlib
@@ -13,4 +14,4 @@ dependencies:
   - trmm_rsl
   - wradlib
   - cartopy
-  - xarray
+  - cvxopt

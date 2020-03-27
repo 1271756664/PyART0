@@ -12,8 +12,6 @@ A class for plotting grid objects with a basemap.
 
 """
 
-from __future__ import print_function
-
 import warnings
 
 import numpy as np
@@ -30,7 +28,7 @@ from ..exceptions import MissingOptionalDependency
 from ..core.transforms import _interpolate_axes_edges
 
 
-class GridMapDisplayBasemap(object):
+class GridMapDisplayBasemap():
     """
     A class for creating plots from a grid object on top of a Basemap.
 
@@ -115,7 +113,9 @@ class GridMapDisplayBasemap(object):
         if lon_lines is None:
             lon_lines = np.arange(-110, -75, 1)
 
-        self.basemap.drawcoastlines(linewidth=1.25)
+        self.basemap.drawcoastlines(linewidth=1.25, color='b')
+        self.basemap.drawcountries()
+        # self.basemap.drawrivers()
         self.basemap.drawstates()
         self.basemap.drawparallels(
             lat_lines, labels=[True, False, False, False])
@@ -176,6 +176,10 @@ class GridMapDisplayBasemap(object):
             field information.
         colorbar_orient : 'vertical' or 'horizontal'
             Colorbar orientation.
+        ticks : array
+            Colorbar custom tick label locations.
+        ticklabs : array
+            Colorbar custom tick labels.
         edges : bool
             True will interpolate and extrapolate the gate edges from the
             range, azimuth and elevations in the radar, treating these
@@ -231,8 +235,6 @@ class GridMapDisplayBasemap(object):
                 mappable=pm, label=colorbar_label, orientation=colorbar_orient,
                 field=field, ax=ax, fig=fig, ticks=ticks, ticklabs=ticklabs)
 
-        return
-
     def plot_crosshairs(
             self, lon=None, lat=None, line_style='r--', linewidth=2, ax=None):
         """
@@ -265,7 +267,6 @@ class GridMapDisplayBasemap(object):
             np.array([lat, lat]))
         ax.plot(x_lon, y_lon, line_style, linewidth=linewidth)
         ax.plot(x_lat, y_lat, line_style, linewidth=linewidth)
-        return
 
     def plot_latitude_slice(self, field, lon=None, lat=None, **kwargs):
         """
@@ -399,7 +400,6 @@ class GridMapDisplayBasemap(object):
             self.plot_colorbar(
                 mappable=pm, label=colorbar_label, orientation=colorbar_orient,
                 field=field, ax=ax, fig=fig, ticks=ticks, ticklabs=ticklabs)
-        return
 
     def plot_longitude_slice(self, field, lon=None, lat=None, **kwargs):
         """
@@ -532,7 +532,6 @@ class GridMapDisplayBasemap(object):
             self.plot_colorbar(
                 mappable=pm, label=colorbar_label, orientation=colorbar_orient,
                 field=field, ax=ax, fig=fig, ticks=ticks, ticklabs=ticklabs)
-        return
 
     def plot_colorbar(
             self, mappable=None, orientation='horizontal', label=None,
@@ -590,7 +589,6 @@ class GridMapDisplayBasemap(object):
         if ticklabs is not None:
             cb.set_ticklabels(ticklabs)
         cb.set_label(label)
-        return
 
     def _make_basemap(
             self, resolution='l', area_thresh=10000, auto_range=True,

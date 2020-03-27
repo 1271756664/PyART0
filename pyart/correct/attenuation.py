@@ -160,7 +160,8 @@ def calculate_attenuation_zphi(radar, doc=None, fzl=None, smooth_window_len=5,
     """
     # select the coefficients as a function of frequency band
     if (a_coef is None) or (beta is None) or (c is None) or (d is None):
-        if 'frequency' in radar.instrument_parameters:
+        if (radar.instrument_parameters is not None and
+                'frequency' in radar.instrument_parameters):
             a_coef, beta, c, d = _get_param_attzphi(
                 radar.instrument_parameters['frequency']['data'][0])
         else:
@@ -212,15 +213,15 @@ def calculate_attenuation_zphi(radar, doc=None, fzl=None, smooth_window_len=5,
     radar.check_field_exists(phidp_field)
     phidp = deepcopy(radar.fields[phidp_field]['data'])
 
-    ah = np.ma.zeros(refl.shape, dtype='float64')
-    pia = np.ma.zeros(refl.shape, dtype='float64')
+    ah = np.ma.zeros(refl.shape, dtype=refl.dtype)
+    pia = np.ma.zeros(refl.shape, dtype=refl.dtype)
 
     try:
         radar.check_field_exists(zdr_field)
         zdr = radar.fields[zdr_field]['data']
 
-        adiff = np.ma.zeros(zdr.shape, dtype='float64')
-        pida = np.ma.zeros(zdr.shape, dtype='float64')
+        adiff = np.ma.zeros(zdr.shape, dtype=zdr.dtype)
+        pida = np.ma.zeros(zdr.shape, dtype=zdr.dtype)
     except KeyError:
         zdr = None
 
@@ -438,7 +439,8 @@ def calculate_attenuation_philinear(
     """
     # select the coefficients as a function of frequency band
     if (pia_coef is None) or (pida_coef is None):
-        if 'frequency' in radar.instrument_parameters:
+        if (radar.instrument_parameters is not None and
+                'frequency' in radar.instrument_parameters):
             pia_coef, pida_coef = _get_param_attphilinear(
                 radar.instrument_parameters['frequency']['data'][0])
         else:
@@ -600,70 +602,84 @@ def get_mask_fzl(radar, fzl=None, doc=None, min_temp=0., max_h_iso0=0.,
         if iso0_field is None:
             iso0_field = get_field_name('height_over_iso0')
 
-    if temp_ref == 'fixed_fzl':
+    if temp_ref == 'temperature' and temp_field in radar.fields:
+        gatefilter = temp_based_gate_filter(
+            radar, temp_field=temp_field, min_temp=min_temp,
+            thickness=thickness, beamwidth=beamwidth)
+        end_gate_arr = np.zeros(radar.nrays, dtype=np.int32)
+        for ray in range(radar.nrays):
+            ind_rng = np.where(gatefilter.gate_excluded[ray, :] == 1)[0]
+            if ind_rng.size > 0:
+                # there are filtered gates: The last valid gate is one
+                # before the first filter gate
+                if ind_rng[0] > 0:
+                    end_gate_arr[ray] = ind_rng[0]-1
+                else:
+                    end_gate_arr[ray] = 0
+            else:
+                # there are no filter gates: all gates are valid
+                end_gate_arr[ray] = radar.ngates-1
+        mask_fzl = gatefilter.gate_excluded == 1
+
+        return mask_fzl, end_gate_arr
+
+    if temp_ref == 'height_over_iso0' and iso0_field in radar.fields:
+        gatefilter = iso0_based_gate_filter(
+            radar, iso0_field=iso0_field, max_h_iso0=max_h_iso0,
+            thickness=thickness, beamwidth=beamwidth)
+        end_gate_arr = np.zeros(radar.nrays, dtype=np.int32)
+        for ray in range(radar.nrays):
+            ind_rng = np.where(gatefilter.gate_excluded[ray, :] == 1)[0]
+            if ind_rng.size > 0:
+                # there are filtered gates: The last valid gate is one
+                # before the first filter gate
+                if ind_rng[0] > 0:
+                    end_gate_arr[ray] = ind_rng[0]-1
+                else:
+                    end_gate_arr[ray] = 0
+            else:
+                # there are no filter gates: all gates are valid
+                end_gate_arr[ray] = radar.ngates-1
+        mask_fzl = gatefilter.gate_excluded == 1
+
+        return mask_fzl, end_gate_arr
+
+    if temp_ref == 'temperature':
         if fzl is None:
             fzl = 4000.
             doc = 15
-            warn('Freezing level height not specified. ' +
-                 'Using default '+str(fzl)+' [m]')
-        end_gate_arr = np.zeros(radar.nrays, dtype='int32')
-        mask_fzl = np.zeros((radar.nrays, radar.ngates), dtype=np.bool)
-        for sweep in range(radar.nsweeps):
-            end_gate, start_ray, end_ray = (
-                det_process_range(radar, sweep, fzl, doc=doc))
-            end_gate_arr[start_ray:end_ray] = end_gate
-            mask_fzl[start_ray:end_ray, end_gate+1:] = True
+        warn('Temperature field not available. '
+             'Using default freezing level height {} [m]'.format(fzl))
+    elif temp_ref == 'height_over_iso0':
+        if fzl is None:
+            fzl = 4000.
+            doc = 15
+        warn('Height over iso0 field not available. '
+             'Using default freezing level height {} [m]'.format(fzl))
 
-    elif temp_ref == 'temperature':
-        if temp_field in radar.fields:
-            gatefilter = temp_based_gate_filter(
-                radar, temp_field=temp_field, min_temp=min_temp,
-                thickness=thickness, beamwidth=beamwidth)
-            end_gate_arr = np.zeros(radar.nrays, dtype='int32')
-            for ray in range(radar.nrays):
-                ind_rng = np.where(gatefilter.gate_excluded[ray, :] == 1)[0]
-                if len(ind_rng) > 0:
-                    # there are filtered gates: The last valid gate is one
-                    # before the first filter gate
-                    if ind_rng[0] > 0:
-                        end_gate_arr[ray] = ind_rng[0]-1
-                    else:
-                        end_gate_arr[ray] = 0
-                else:
-                    # there are no filter gates: all gates are valid
-                    end_gate_arr[ray] = radar.ngates-1
-            mask_fzl = gatefilter.gate_excluded == 1
-        else:
-            fzl = 4000.
-            doc = 15
-            warn('Temperature field not available.' +
-                 'Using default freezing level height ' +
-                 str(fzl) + ' [m].')
-    else:
-        if iso0_field in radar.fields:
-            gatefilter = iso0_based_gate_filter(
-                radar, iso0_field=iso0_field, max_h_iso0=max_h_iso0,
-                thickness=thickness, beamwidth=beamwidth)
-            end_gate_arr = np.zeros(radar.nrays, dtype='int32')
-            for ray in range(radar.nrays):
-                ind_rng = np.where(gatefilter.gate_excluded[ray, :] == 1)[0]
-                if len(ind_rng) > 0:
-                    # there are filtered gates: The last valid gate is one
-                    # before the first filter gate
-                    if ind_rng[0] > 0:
-                        end_gate_arr[ray] = ind_rng[0]-1
-                    else:
-                        end_gate_arr[ray] = 0
-                else:
-                    # there are no filter gates: all gates are valid
-                    end_gate_arr[ray] = radar.ngates-1
-            mask_fzl = gatefilter.gate_excluded == 1
-        else:
-            fzl = 4000.
-            doc = 15
-            warn("Height over iso0 field not available."
-                 + "Using default freezing level height "
-                 + str(fzl) + " [m].")
+    if fzl is None:
+        fzl = 4000.
+        doc = 15
+        warn('Freezing level height not specified. '
+             'Using default {} [m]'.format(fzl))
+
+    end_gate_arr = np.zeros(radar.nrays, dtype=np.int32)
+    mask_fzl = radar.gate_altitude['data'] > fzl
+    for ray in range(radar.nrays):
+        ind_rng = np.where(mask_fzl)[0]
+        if ind_rng.size == 0:
+            # all volume below freezing level
+            # mask only the last doc gates
+            end_gate_arr[ray] = radar.ngates - doc
+            mask_fzl[ray, end_gate_arr[ray]+1:] = True
+            continue
+        if ind_rng[0] == 0:
+            # all volume above freezing level
+            end_gate_arr[ray] = -1
+            continue
+        end_gate_arr[ray] = min(ind_rng[0]-1, radar.ngates - doc)
+        if end_gate_arr[ray] != ind_rng[0]-1:
+            mask_fzl[ray, end_gate_arr[ray]+1:] = True
 
     return mask_fzl, end_gate_arr
 
@@ -820,7 +836,6 @@ def calculate_attenuation(radar, z_offset, debug=False, doc=15, fzl=4000.0,
                           corr_refl_field=None):
     """
     Calculate the attenuation from a polarimetric radar using Z-PHI method.
-
     Parameters
     ----------
     radar : Radar
