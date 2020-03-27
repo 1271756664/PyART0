@@ -33,7 +33,7 @@ if __name__ == '__main__':
     # 读取雷达反射率
     sweep = 0    # 体扫仰角序号
     field = 'reflectivity'
-    radar_info = pd.read_json('/Users/yanglee/Documents/Works/2020/江苏省局/data/radar_info.json')
+    radar_info = pd.read_json('radar_info.json')
 
     radar = read_sband_archive(filename, station=get_radar_info(filename, radar_info))
 
