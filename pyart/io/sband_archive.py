@@ -224,7 +224,7 @@ def _find_range_params(scan_info, filemetadata):
                 continue
             first_gate = scan_params['first_gate'][i]
             gate_spacing = scan_params['gate_spacing'][i]
-            last_gate = first_gate + gate_spacing * (ngates - 0.5)
+            last_gate = first_gate + gate_spacing * ngates
 
             min_first_gate = min(min_first_gate, first_gate)
             min_gate_spacing = min(min_gate_spacing, gate_spacing)

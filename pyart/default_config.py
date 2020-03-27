@@ -807,6 +807,32 @@ nexrad_metadata = {
         'coordinates': 'elevation azimuth range'},
 }
 
+sband_metadata = {
+    reflectivity: {
+        'units': 'dBZ',
+        'standard_name': 'equivalent_reflectivity_factor',
+        'long_name': 'Reflectivity',
+        'valid_max': 94.5,
+        'valid_min': -32.0,
+        'coordinates': 'elevation azimuth range'},
+
+    velocity: {
+        'units': 'meters_per_second',
+        'standard_name': 'radial_velocity_of_scatterers_away_from_instrument',
+        'long_name': 'Mean doppler Velocity',
+        'valid_max': 95.0,
+        'valid_min': -95.0,
+        'coordinates': 'elevation azimuth range'},
+
+    spectrum_width: {
+        'units': 'meters_per_second',
+        'standard_name': 'doppler_spectrum_width',
+        'long_name': 'Spectrum Width',
+        'valid_max': 63.0,
+        'valid_min': -63.5,
+        'coordinates': 'elevation azimuth range'},
+}
+
 # Metadata for NEXRAD Level 3 Products
 nexrad_level3_metadata = {
 

@@ -76,7 +76,7 @@ class SbandRadarFile(object):
     def close(self):
         """ Close the file. """
         self._fh.close()
-        
+
     def scan_info(self, scans=None):
         """
         Return a list of dictionaries with scan information.
@@ -158,7 +158,7 @@ class SbandRadarFile(object):
         ----------
         scan_num : int
             Scan number (0 based).
-        moment : 'REF', 'VEL', 'SW', 'ZDR', 'PHI', or 'RHO'
+        moment : 'REF', 'VEL', 'SW'
             Moment of interest.
 
         Returns
@@ -195,7 +195,7 @@ class SbandRadarFile(object):
         msg_nums = self._msg_nums(scans)
 
         tmp = [self.radial_records[i]['msg_header'][key] for i in msg_nums]
-        
+
         return np.array(tmp)
 
     def get_times(self, scans=None):
@@ -245,7 +245,7 @@ class SbandRadarFile(object):
 
         """
         scale = 180 / (4096 * 8.)
-        
+
         if scans is None:
             scans = range(self.nscans)
         else:
@@ -271,7 +271,7 @@ class SbandRadarFile(object):
 
         """
         scale = 180 / (4096 * 8.)
-        
+
         if scans is None:
             scans = range(self.nscans)
         else:
@@ -299,8 +299,8 @@ class SbandRadarFile(object):
         if scans is None:
             scans = range(self.nscans)
         else:
-            raise ValueError("scans error!")        
-        
+            raise ValueError("scans error!")
+
         scale = 180 / (4096 * 8.)
         msgs = [self.radial_records[self.scan_msgs[i][0]] for i in scans]
         return np.round(np.array(
@@ -388,14 +388,14 @@ class SbandRadarFile(object):
 
         # extract the data
         data = np.ones((nrays, max_ngates), dtype='u1')
-            
+
         for i, msg_num in enumerate(msg_nums):
             msg = self.radial_records[msg_num]
             if moment not in msg.keys():
                 continue
             ngates = msg[moment]['ngates']
             data[i, :ngates] = msg[moment]['data']
-               
+
         # return raw data if requested
         if raw_data:
             return data
@@ -410,9 +410,9 @@ class SbandRadarFile(object):
                 scale = np.float32(msg[moment]['scale'])
 
                 mask = data <= 1
-                
+
                 scaled_data = (data - offset) / scale
-                
+
                 return np.ma.array(scaled_data, mask=mask)
         # moment is not present in any scan, mask all values
         return np.ma.masked_less_equal(data, 1)
@@ -445,12 +445,12 @@ def _get_msg1_from_buf(buf, pos, dic):
 
     sur_first = int(msg1_header['sur_range_first'])
     doppler_first = int(msg1_header['doppler_range_first'])
-    
+
     if doppler_first > 2**15:
         doppler_first = doppler_first - 2**16
-        
+
     if msg1_header['sur_pointer']:
-        offset = pos + msg_header_size + msg1_header['sur_pointer']     
+        offset = pos + msg_header_size + msg1_header['sur_pointer']
         data = np.frombuffer(buf[offset:offset+sur_nbins], '>u1')
         dic['REF'] = {
             'ngates': sur_nbins,
@@ -531,14 +531,14 @@ SINT1 = 'b'
 SINT2 = 'h'
 SINT4 = 'i'
 
-MSG_HEADER = (    
+MSG_HEADER = (
     ('reserved0', '14s'),
     ("style", "H"),
     ("reserved1", "12s"),)
 
 MSG_1 = (
     ('collect_ms', 'I'),
-    ('collect_date', 'H'),    
+    ('collect_date', 'H'),
     ('unambig_range', 'H'),
     ('azimuth_angle', 'H'),
     ("azimuth_number", "H"),
@@ -558,10 +558,7 @@ MSG_1 = (
     ("width_pointer", "H"),
     ("doppler_resolution", "H"),
     ("vcp", "H"),
-    ("reserved2", "8B"),
-    ("velocity_back_pointer", "H"),
-    ("spectrum_back_pointer", "H"),
-    ("velocity_back_resolution", "H"),
+    ("reserved2", "14s"),
     ("nyquist_vel", "H"),
     ("reserved3", "38B"),
 )
