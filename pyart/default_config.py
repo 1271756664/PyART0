@@ -82,7 +82,6 @@ rain_rate = 'rain_rate'
 radar_estimated_rain_rate = 'radar_estimated_rain_rate'
 radar_echo_classification = 'radar_echo_classification'
 specific_attenuation = 'specific_attenuation'
-specific_differential_attenuation = 'specific_differential_attenuation'
 
 # Textures
 differential_phase_texture = 'differential_phase_texture'
@@ -95,12 +94,6 @@ vertical_wind_component = 'vertical_wind_component'
 # profile variables
 height = 'height'
 interpolated_profile = 'interpolated_profile'
-height_over_iso0 = 'height_over_iso0'
-
-# path integrated attenuation
-path_integrated_attenuation = 'path_integrated_attenuation'
-path_integrated_differential_attenuation = ('path_integrated' +
-                                            'differential_attenuation')
 
 # End of Simple Configuration section
 
@@ -177,12 +170,7 @@ DEFAULT_FIELD_NAMES = {
     'northward_wind_component': northward_wind_component,
     'vertical_wind_component': vertical_wind_component,
     'height': height,
-    'height_over_iso0': height_over_iso0,
     'interpolated_profile': interpolated_profile,
-    'path_integrated_attenuation': path_integrated_attenuation,
-    'specific_differential_attenuation': specific_differential_attenuation,
-    'path_integrated_differential_attenuation':
-    path_integrated_differential_attenuation
 }
 
 
@@ -807,32 +795,6 @@ nexrad_metadata = {
         'coordinates': 'elevation azimuth range'},
 }
 
-sband_metadata = {
-    reflectivity: {
-        'units': 'dBZ',
-        'standard_name': 'equivalent_reflectivity_factor',
-        'long_name': 'Reflectivity',
-        'valid_max': 94.5,
-        'valid_min': -32.0,
-        'coordinates': 'elevation azimuth range'},
-
-    velocity: {
-        'units': 'meters_per_second',
-        'standard_name': 'radial_velocity_of_scatterers_away_from_instrument',
-        'long_name': 'Mean doppler Velocity',
-        'valid_max': 95.0,
-        'valid_min': -95.0,
-        'coordinates': 'elevation azimuth range'},
-
-    spectrum_width: {
-        'units': 'meters_per_second',
-        'standard_name': 'doppler_spectrum_width',
-        'long_name': 'Spectrum Width',
-        'valid_max': 63.0,
-        'valid_min': -63.5,
-        'coordinates': 'elevation azimuth range'},
-}
-
 # Metadata for NEXRAD Level 3 Products
 nexrad_level3_metadata = {
 
@@ -1381,9 +1343,9 @@ def spectrum_width_limit(container=None, selection=0):
 
 DEFAULT_FIELD_COLORMAP = {
     # field name : colormap
-    reflectivity: 'pyart_HomeyerRainbow',
-    corrected_reflectivity: 'pyart_HomeyerRainbow',
-    total_power: 'pyart_HomeyerRainbow',
+    reflectivity: 'pyart_NWSRef',
+    corrected_reflectivity: 'pyart_NWSRef',
+    total_power: 'pyart_NWSRef',
     signal_to_noise_ratio: 'pyart_Carbone17',
 
     velocity: 'pyart_BuDRd18',
@@ -1425,18 +1387,18 @@ DEFAULT_FIELD_COLORMAP = {
     interpolated_profile: 'pyart_SCook18',
 
     # Additional reflectivity like fields
-    'CZ': 'pyart_HomeyerRainbow',
-    'DZ': 'pyart_HomeyerRainbow',
-    'AZ': 'pyart_HomeyerRainbow',
-    'Z': 'pyart_HomeyerRainbow',
-    'dbz': 'pyart_HomeyerRainbow',
-    'DBZ': 'pyart_HomeyerRainbow',
-    'dBZ': 'pyart_HomeyerRainbow',
-    'DBZH': 'pyart_HomeyerRainbow',
-    'DBZ_S': 'pyart_HomeyerRainbow',
-    'DBZ_K': 'pyart_HomeyerRainbow',
-    'reflectivity_horizontal': 'pyart_HomeyerRainbow',
-    'corr_reflectivity': 'pyart_HomeyerRainbow',
+    'CZ': 'pyart_NWSRef',
+    'DZ': 'pyart_NWSRef',
+    'AZ': 'pyart_NWSRef',
+    'Z': 'pyart_NWSRef',
+    'dbz': 'pyart_NWSRef',
+    'DBZ': 'pyart_NWSRef',
+    'dBZ': 'pyart_NWSRef',
+    'DBZH': 'pyart_NWSRef',
+    'DBZ_S': 'pyart_NWSRef',
+    'DBZ_K': 'pyart_NWSRef',
+    'reflectivity_horizontal': 'pyart_NWSRef',
+    'corr_reflectivity': 'pyart_NWSRef',
 }
 
 # map each field to a limit or a limit function
